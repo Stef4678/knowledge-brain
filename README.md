@@ -199,4 +199,4 @@ Created by [Kerekes Stefan](https://github.com/Stef4678).
 
 ## License
 
-No license is included in the supplied plugin manifest. Add a `LICENSE` file and update this section before publishing the repository publicly.
+[MIT](LICENSE) © 2026 Kerekes Stefan
