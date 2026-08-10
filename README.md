@@ -186,12 +186,12 @@ Review each provider's terms and privacy policy before sending vault content to 
 
 Potential future improvements include:
 
-- Public release packaging and automated builds.
-- More granular control over which vault folders are indexed.
-- Additional AI providers and local-model support.
-- Import and export tools for graph metadata.
-- More graph layouts and filtering options.
-- Automated tests for indexing, graph validation, and provider integrations.
+- Automated builds via GitHub Actions (build + release on version tag)
+- More granular control over which vault folders are indexed
+- Additional AI providers and local-model support (e.g., Ollama, LM Studio)
+- Import and export tools for graph metadata
+- More graph layouts and filtering options
+- Automated tests for indexing, graph validation, and provider integrations
 
 ## Author
 
