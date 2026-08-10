@@ -169,7 +169,6 @@ function searchInternal(idx, records, text, limit2) {
 var KB_KEYS = /* @__PURE__ */ new Set([
   "parents",
   "parent_labels",
-  "comments",
   "source",
   "question_type",
   "tags",
@@ -246,9 +245,6 @@ function serializeThought(rec) {
   fm.parents = rec.parents;
   if (Object.keys(rec.parentLabels).length > 0) {
     fm.parent_labels = rec.parentLabels;
-  }
-  if (rec.comments.length > 0) {
-    fm.comments = rec.comments;
   }
   if (rec.source) {
     fm.source = rec.source;
@@ -438,7 +434,7 @@ var KnowledgeBase = class {
         continue;
       }
       if (this.isTrashPath(file.path)) {
-        if (rec.deleted_at || rec.parents.length > 0 || Object.keys(rec.parentLabels).length > 0 || rec.comments.length > 0 || rec.source || rec.question_type) {
+        if (rec.deleted_at || rec.parents.length > 0 || Object.keys(rec.parentLabels).length > 0 || rec.source || rec.question_type) {
           if (!seen.has(rec.id) && !this.deletedRecords.has(rec.id)) {
             this.deletedRecords.set(rec.id, rec);
           }
@@ -485,9 +481,6 @@ var KnowledgeBase = class {
       deleted_at: fm.deleted_at ? String(fm.deleted_at) : null,
       parents: toStrArray(fm.parents),
       parentLabels: isPlainObject(fm.parent_labels) ? fm.parent_labels : {},
-      comments: Array.isArray(fm.comments) ? fm.comments.filter(
-        (c) => isPlainObject(c) && typeof c.text === "string"
-      ) : [],
       extra
     };
   }
@@ -533,7 +526,7 @@ var KnowledgeBase = class {
       const rec = await this.readThought(file);
       if (rec.deleted_at) {
         this.deletedRecords.set(id2, rec);
-      } else if (rec.parents.length > 0 || Object.keys(rec.parentLabels).length > 0 || rec.comments.length > 0 || rec.source || rec.question_type) {
+      } else if (rec.parents.length > 0 || Object.keys(rec.parentLabels).length > 0 || rec.source || rec.question_type) {
         this.deletedRecords.set(id2, { ...rec, deleted_at: now() });
       }
     }
@@ -766,68 +759,6 @@ var KnowledgeBase = class {
     }
     return false;
   }
-  validateLink(parentId, childId) {
-    if (parentId === childId) {
-      return { ok: false, reason: "Cannot link a thought to itself" };
-    }
-    if (!this.records.has(parentId)) {
-      return { ok: false, reason: "Thought not found" };
-    }
-    if (!this.records.has(childId)) {
-      return { ok: false, reason: "Thought not found" };
-    }
-    const child = this.records.get(childId);
-    if (child.parents.includes(parentId)) {
-      return { ok: false, reason: "Already linked" };
-    }
-    if (this.isDescendant(childId, parentId)) {
-      return { ok: false, reason: "Would create a cycle" };
-    }
-    return { ok: true, reason: "" };
-  }
-  async addLink(parentId, childId, label = "") {
-    const validation = this.validateLink(parentId, childId);
-    if (!validation.ok) {
-      throw new Error(validation.reason);
-    }
-    const child = this.records.get(childId);
-    child.parents.push(parentId);
-    if (label) {
-      child.parentLabels[parentId] = label;
-    }
-    await this.writeRecord(child);
-    this.notify();
-  }
-  async removeLink(parentId, childId) {
-    const child = this.records.get(childId);
-    if (!child) {
-      return;
-    }
-    child.parents = child.parents.filter((p2) => p2 !== parentId);
-    delete child.parentLabels[parentId];
-    await this.writeRecord(child);
-    this.notify();
-  }
-  async setParents(id2, parents2) {
-    const rec = this.records.get(id2);
-    if (!rec) {
-      throw new Error("Thought not found");
-    }
-    for (const p2 of parents2) {
-      const validation = this.validateLink(p2, id2);
-      if (!validation.ok) {
-        throw new Error(`Cannot set parent "${p2}": ${validation.reason}`);
-      }
-    }
-    rec.parents = [...parents2];
-    for (const key of Object.keys(rec.parentLabels)) {
-      if (!parents2.includes(key)) {
-        delete rec.parentLabels[key];
-      }
-    }
-    await this.writeRecord(rec);
-    this.notify();
-  }
   getGraph(onlyDefaultFolder = false) {
     const nodes3 = (onlyDefaultFolder ? this.listRecords().filter((r) => this.isInDefaultFolder(r.path)) : this.listRecords()).map((r) => ({
       id: r.id,
@@ -859,30 +790,6 @@ var KnowledgeBase = class {
       }
     }
     return { nodes: nodes3, edges: edges3 };
-  }
-  exportGraph() {
-    return this.getGraph(false);
-  }
-  async importGraph(graph) {
-    const byTitle = /* @__PURE__ */ new Map();
-    for (const n of graph.nodes ?? []) {
-      if (!n.id || this.records.has(n.id)) {
-        continue;
-      }
-      await this.createThought(n.title || n.id, n.content || "");
-      byTitle.set(n.id, n.title || n.id);
-    }
-    for (const e of graph.edges ?? []) {
-      const parent4 = e.parent_id;
-      const child = e.child_id;
-      if (this.records.has(parent4) && this.records.has(child)) {
-        const validation = this.validateLink(parent4, child);
-        if (validation.ok) {
-          await this.addLink(parent4, child, e.label || "");
-        }
-      }
-    }
-    this.notify();
   }
   // ------------------------------------------------------------- CRUD
   assertUniqueTitle(title, excludeId) {
@@ -922,7 +829,6 @@ var KnowledgeBase = class {
       deleted_at: null,
       parents: [],
       parentLabels: {},
-      comments: [],
       extra: {}
     };
     if (parents2.length > 0) {
@@ -1088,33 +994,6 @@ var KnowledgeBase = class {
     }
     return ids;
   }
-  // ----------------------------------------------------------- comments
-  async addComment(id2, text) {
-    const rec = this.records.get(id2);
-    if (!rec) {
-      throw new Error("Thought not found");
-    }
-    rec.comments.push({ text, created_at: now() });
-    await this.writeRecord(rec);
-    this.notify();
-  }
-  listComments(id2) {
-    return this.records.get(id2)?.comments ?? [];
-  }
-  async deleteComment(id2, createdAt) {
-    const rec = this.records.get(id2);
-    if (!rec) {
-      return false;
-    }
-    const idx = rec.comments.findIndex((c) => c.created_at === createdAt);
-    if (idx < 0) {
-      return false;
-    }
-    rec.comments.splice(idx, 1);
-    await this.writeRecord(rec);
-    this.notify();
-    return true;
-  }
   // ------------------------------------------------------------- stats
   /**
    * Aggregated stats over active thoughts. When `onlyDefaultFolder` is true,
@@ -1141,13 +1020,6 @@ var KnowledgeBase = class {
       by_source,
       by_question_type
     };
-  }
-  clearBase() {
-  }
-  async moveToTrashAll() {
-    for (const id2 of [...this.records.keys()]) {
-      await this.deleteThought(id2, false);
-    }
   }
 };
 function displayTitle(t) {
@@ -1925,7 +1797,6 @@ async function testProvider(settings) {
 }
 
 // src/ai.ts
-var RELATED_TYPES = /* @__PURE__ */ new Set(["children", "siblings", "parents"]);
 var FOLLOWUP_GROUPS = [...QUESTION_TYPES];
 var AiService = class {
   constructor(kb) {
@@ -2056,261 +1927,6 @@ ${content}` }
       }
     }
     return clean;
-  }
-  /** Find new meaningful parent->child links. Port of POST /api/connections. */
-  async findConnections(settings, maxN = 8) {
-    const allThoughts = this.kb.listThoughts();
-    if (allThoughts.length === 0) {
-      return [];
-    }
-    const theme = allThoughts.map((t) => t.title).join(" ");
-    const nodes3 = this.retrieve(theme, 40);
-    const nodeIds = new Set(nodes3.map((t) => t.id));
-    const link_lines = this.kb.getGraph().edges.filter((e) => nodeIds.has(e.parent_id) && nodeIds.has(e.child_id)).map((e) => `- ${e.parent_id} -> ${e.child_id}`);
-    const existing_desc = link_lines.length ? link_lines.join("\n") : "(none)";
-    const thought_lines = nodes3.map((t) => kbLine(t));
-    const messages = [
-      {
-        role: "system",
-        content: 'You analyze a personal knowledge base to find new, meaningful relationships between the existing thoughts listed below. A thought can have a parent and children, forming a tree (a child belongs under one parent). Suggest NEW parent -> child links, between the listed thoughts only, that are not already in the graph and that make sense. Return JSON exactly of the form: {"connections": [{"parent_id": <existing id>, "child_id": <existing id>, "reason": "..."}]} The reason is 1-2 sentences explaining why the child belongs under that parent.'
-      },
-      {
-        role: "user",
-        content: "Thoughts:\n" + thought_lines.join("\n") + "\n\nExisting links:\n" + existing_desc + `
-
-Suggest up to ${maxN} new parent -> child links.`
-      }
-    ];
-    const result = await this.json(messages, settings, 0.4);
-    const raw = Array.isArray(result.connections) ? result.connections : [];
-    const titles = new Map(nodes3.map((t) => [t.id, t.title]));
-    const connections = [];
-    for (const item of raw) {
-      if (!item || typeof item !== "object") {
-        continue;
-      }
-      const parentId = item.parent_id;
-      const childId = item.child_id;
-      const reason = String(item.reason ?? "").trim();
-      if (typeof parentId !== "string" || typeof childId !== "string") {
-        continue;
-      }
-      const validation = this.kb.validateLink(parentId, childId);
-      if (!validation.ok) {
-        continue;
-      }
-      connections.push({
-        parent_id: parentId,
-        parent_title: titles.get(parentId) ?? null,
-        child_id: childId,
-        child_title: titles.get(childId) ?? null,
-        reason
-      });
-    }
-    return connections;
-  }
-  /** Extract key ideas from a thought. Port of POST /api/thoughts/{id}/extract. */
-  async extractIdeas(thought, settings) {
-    const messages = [
-      {
-        role: "system",
-        content: 'You extract the key ideas from a piece of writing and return them as JSON. Extract 3 to 8 distinct, meaningful ideas. Each idea has a short title (at most 8 words) and a 1-2 sentence summary written in your own words based only on the given text. Respond with only a JSON object of the form: {"ideas": [{"title": "...", "summary": "..."}]}'
-      },
-      { role: "user", content: `Title: ${displayTitle(thought)}
-
-Content:
-${thought.content}` }
-    ];
-    const result = await this.json(messages, settings, settings.temperature);
-    const raw = Array.isArray(result.ideas) ? result.ideas : [];
-    const clean = [];
-    for (const idea of raw) {
-      if (!idea || typeof idea !== "object") {
-        continue;
-      }
-      const title = String(idea.title ?? "").trim();
-      const summary = String(idea.summary ?? "").trim();
-      if (title) {
-        clean.push({ title, summary });
-      }
-    }
-    return clean;
-  }
-  /** Analyze a parent's children. Port of POST /api/thoughts/{id}/reanalyze. */
-  async reanalyzeChildren(thought, settings) {
-    const children = thought.children;
-    const childIds = new Set(children.map((c) => c.id));
-    const others = this.retrieve(`${displayTitle(thought)} ${thought.content}`, 20).filter(
-      (t) => t.id !== thought.id && !childIds.has(t.id)
-    );
-    const children_lines = children.map((c) => kbLine(c));
-    const others_lines = others.map((t) => kbLine(t));
-    const messages = [
-      {
-        role: "system",
-        content: 'You analyze a parent thought and its children in a knowledge base. Determine two things. (1) Whether each current child truly belongs under this parent; if a child fits better under another existing thought, flag it as misplaced and name the better parent. (2) Which other thoughts from the provided list would fit well as new children of this parent. Return JSON exactly of the form: {"misplaced": [{"child_id": <id>, "suggested_parent_id": <id>, "reason": "..."}], "new_children": [{"child_id": <id>, "reason": "..."}]} Each reason is one or two sentences. Only reference ids that appear in the provided lists.'
-      },
-      {
-        role: "user",
-        content: `Parent thought (id ${thought.id}):
-Title: ${displayTitle(thought)}
-Content:
-${thought.content}
-
-Current children:
-` + (children_lines.length ? children_lines.join("\n") : "(none)") + "\n\nOther thoughts:\n" + (others_lines.length ? others_lines.join("\n") : "(none)")
-      }
-    ];
-    const result = await this.json(messages, settings, 0.4);
-    const titles = new Map(this.kb.listThoughts().map((t) => [t.id, t.title]));
-    const misplaced = [];
-    const rawMisplaced = Array.isArray(result.misplaced) ? result.misplaced : [];
-    for (const item of rawMisplaced) {
-      if (!item || typeof item !== "object") {
-        continue;
-      }
-      const childId = item.child_id;
-      const newParentId = item.suggested_parent_id;
-      const reason = String(item.reason ?? "").trim();
-      if (typeof childId !== "string" || typeof newParentId !== "string") {
-        continue;
-      }
-      if (!childIds.has(childId)) {
-        continue;
-      }
-      if (newParentId === thought.id || newParentId === childId) {
-        continue;
-      }
-      const validation = this.kb.validateLink(newParentId, childId);
-      if (!validation.ok) {
-        continue;
-      }
-      misplaced.push({
-        child_id: childId,
-        child_title: titles.get(childId) ?? null,
-        suggested_parent_id: newParentId,
-        suggested_parent_title: titles.get(newParentId) ?? null,
-        reason
-      });
-    }
-    const new_children = [];
-    const rawNew = Array.isArray(result.new_children) ? result.new_children : [];
-    for (const item of rawNew) {
-      if (!item || typeof item !== "object") {
-        continue;
-      }
-      const childId = item.child_id;
-      const reason = String(item.reason ?? "").trim();
-      if (typeof childId !== "string") {
-        continue;
-      }
-      if (childIds.has(childId) || childId === thought.id) {
-        continue;
-      }
-      const validation = this.kb.validateLink(thought.id, childId);
-      if (!validation.ok) {
-        continue;
-      }
-      new_children.push({
-        child_id: childId,
-        child_title: titles.get(childId) ?? null,
-        reason
-      });
-    }
-    return { misplaced, new_children };
-  }
-  /** Generate children/siblings/parents ideas. Port of generate-related. */
-  async generateRelated(thought, rtype, settings) {
-    if (!RELATED_TYPES.has(rtype)) {
-      throw new Error("type must be children, siblings, or parents");
-    }
-    if (rtype === "siblings" && thought.parents.length === 0) {
-      throw new Error("This thought has no parent, so it has no siblings");
-    }
-    const existingTitles = new Set(
-      this.kb.listThoughts().map((t) => t.title.trim().toLowerCase())
-    );
-    const related = this.retrieve(`${displayTitle(thought)} ${thought.content}`, 50);
-    const existing_lines = related.map((t) => `- ${t.title}`).join("\n") || "(none)";
-    let task;
-    if (rtype === "children") {
-      task = "Generate 3 to 6 subtopics or key ideas that expand this thought, things that would be natural children of it.";
-    } else if (rtype === "siblings") {
-      task = "Generate 3 to 5 related thoughts that belong under the SAME parent as this thought - same topic area but distinct from it.";
-    } else {
-      task = "Generate 1 to 3 broader concepts that this thought belongs under (its natural parents).";
-    }
-    const messages = [
-      {
-        role: "system",
-        content: 'You help grow a personal knowledge base. Each idea has a short title (at most 8 words) and a 1-2 sentence summary. Do NOT repeat or duplicate any existing thought title. Return JSON exactly of the form: {"ideas": [{"title": "...", "summary": "..."}]}'
-      },
-      {
-        role: "user",
-        content: `Thought:
-Title: ${displayTitle(thought)}
-Content:
-${thought.content}` + (rtype === "siblings" && thought.parents[0] ? `
-
-Its parent:
-${displayTitle(thought.parents[0])}` : "") + `
-
-${task}
-
-Existing thought titles (avoid these):
-${existing_lines}`
-      }
-    ];
-    const result = await this.json(messages, settings, 0.5);
-    const raw = Array.isArray(result.ideas) ? result.ideas : [];
-    const seen = /* @__PURE__ */ new Set();
-    const ideas = [];
-    for (const item of raw) {
-      if (!item || typeof item !== "object") {
-        continue;
-      }
-      const title = String(item.title ?? "").trim();
-      const summary = String(item.summary ?? "").trim();
-      const key = title.toLowerCase();
-      if (!title || existingTitles.has(key) || seen.has(key)) {
-        continue;
-      }
-      seen.add(key);
-      ideas.push({ title, summary });
-    }
-    return ideas;
-  }
-  /** Write a concise description fitting the thought's place in the graph. */
-  async generateContent(thought, settings) {
-    const ctxLines = (items) => items.map((x2) => `- ${displayTitle(x2)}`).join("\n") || "(none)";
-    const user_parts = [`Thought:
-Title: ${displayTitle(thought)}`];
-    if (thought.content) {
-      user_parts.push(`Current content:
-${thought.content}`);
-    }
-    user_parts.push(
-      "\nWhere it sits in the knowledge base:",
-      `Parents:
-${ctxLines(thought.parents)}`,
-      `Children:
-${ctxLines(thought.children)}`,
-      `Siblings:
-${ctxLines(thought.siblings)}`
-    );
-    const messages = [
-      {
-        role: "system",
-        content: 'Write a concise but substantive description of a thought in a personal knowledge base, fitting where it sits in the graph (its parents, children, siblings). Write in your own words, 2 to 4 short paragraphs or natural bullet points, Markdown-friendly. Return JSON exactly of the form: {"content": "..."}'
-      },
-      { role: "user", content: user_parts.join("\n") }
-    ];
-    const result = await this.json(messages, settings, 0.5);
-    const content = String(result.content ?? "").trim();
-    if (!content) {
-      throw new Error("DeepSeek did not return content");
-    }
-    return content;
   }
   /** Follow-up question suggestions. Port of POST /api/thoughts/{id}/followups. */
   async followups(thought, settings, avoid = []) {
@@ -33352,7 +32968,6 @@ var GraphView = class extends import_obsidian6.ItemView {
       empty2.createEl("p", { text: "No thoughts match the current filter." });
       return;
     }
-    const roots = nodes3.filter((n) => !edges3.some((e) => e.child_id === n.id));
     const nodeBorder = cssVar("--background-modifier-border", "#888");
     const labelColor = cssVar("--text-normal", "#333");
     const edgeColor = cssVar("--text-faint", "#999");
@@ -33764,6 +33379,8 @@ var ChatView = class extends import_obsidian8.ItemView {
     this.liveReasoning = null;
     /** Question type of the follow-up that loaded the current input. */
     this.pendingType = "";
+    /** Titles currently being created from a suggestion; guards duplicate clicks. */
+    this.savingTitles = /* @__PURE__ */ new Set();
     this.kb = kb;
     this.ai = ai;
     this.getSettings = getSettings;
@@ -34135,19 +33752,40 @@ ${thought.content}`;
     root.onclick = () => void this.createThought(title, content, [], type);
   }
   async createThought(title, content, parents2, type = "") {
+    const key = title.trim().toLowerCase();
+    if (!key || this.savingTitles.has(key)) {
+      return;
+    }
+    this.savingTitles.add(key);
+    this.suggestionsEl.empty();
     try {
       const thought = await this.kb.createThought(title, content, parents2, type);
       const parentLabel = thought.parents[0]?.title;
       new import_obsidian8.Notice(
         `Created "${thought.title}"${parentLabel ? ` under "${parentLabel}"` : ""}${thought.question_type ? ` (${thought.question_type})` : ""}`
       );
-      const file = this.app.vault.getAbstractFileByPath(thought.title + ".md");
-      if (file instanceof import_obsidian8.TFile) {
-        void this.app.workspace.getLeaf(false).openFile(file);
-      }
-      this.suggestionsEl.empty();
+      this.openThoughtFile(thought.id);
     } catch (e) {
-      new import_obsidian8.Notice(`Knowledge Brain: ${e instanceof Error ? e.message : String(e)}`);
+      const rec = this.kb.getRecord(sanitizeTitle(title));
+      if (rec) {
+        new import_obsidian8.Notice(`"${rec.title}" already exists \u2014 opening the existing note.`);
+        this.openThoughtFile(rec.id);
+      } else {
+        new import_obsidian8.Notice(`Knowledge Brain: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    } finally {
+      this.savingTitles.delete(key);
+    }
+  }
+  /** Open the note for a thought id in a new leaf (best-effort, non-blocking). */
+  openThoughtFile(id2) {
+    const rec = this.kb.getRecord(id2);
+    if (!rec) {
+      return;
+    }
+    const file = this.app.vault.getAbstractFileByPath(rec.path);
+    if (file instanceof import_obsidian8.TFile) {
+      void this.app.workspace.getLeaf(false).openFile(file);
     }
   }
   async suggestTitleFor(ex) {
@@ -34699,7 +34337,7 @@ var CombinedSidebarView = class extends import_obsidian13.ItemView {
       return;
     }
     if (this.followupsPaused) {
-      this.renderFollowupsPaused(thought);
+      this.renderFollowupsPaused();
     } else {
       this.renderFollowups(thought, token);
     }
@@ -34753,7 +34391,7 @@ var CombinedSidebarView = class extends import_obsidian13.ItemView {
     void this.generateFollowups(thought, token, body);
   }
   /** Paused follow-ups section: Resume button + hint, no generation. */
-  renderFollowupsPaused(thought) {
+  renderFollowupsPaused() {
     const section = this.container.createDiv({ cls: "kb-followups-section" });
     const header = section.createDiv({ cls: "kb-followups-header" });
     header.createSpan({ text: "Follow-up questions (paused)" });
