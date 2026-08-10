@@ -1,0 +1,577 @@
+/* Knowledge Brain plugin styles */
+
+.kb-settings-title {
+  margin-left: 0 !important;
+  margin-inline-start: 0 !important;
+  padding-left: 0;
+  text-align: left !important;
+}
+
+.kb-status {
+  cursor: pointer;
+  color: var(--text-muted);
+  padding: 0 4px;
+}
+
+.kb-status:hover {
+  color: var(--text-normal);
+  text-decoration: underline;
+}
+
+.kb-graph-view {
+  width: 100%;
+  height: 100%;
+  position: relative;
+}
+
+.kb-graph-view .kb-graph-canvas {
+  position: absolute;
+  inset: 0;
+  background: var(--background-primary);
+}
+
+.kb-graph-view .kb-graph-toolbar {
+  position: absolute;
+  top: 10px;
+  left: 12px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: var(--background-secondary-alt);
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.kb-graph-view .kb-graph-toolbar input[type="range"] {
+  width: 140px;
+}
+
+.kb-graph-view .kb-graph-legend {
+  position: absolute;
+  bottom: 12px;
+  left: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: var(--background-secondary-alt);
+  color: var(--text-muted);
+  font-size: 12px;
+  opacity: 0.85;
+}
+
+.kb-graph-view .kb-graph-legend-type {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.kb-graph-view .kb-graph-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+/* Hover tooltip for graph nodes. */
+
+.kb-graph-preview {
+  position: fixed;
+  z-index: 1000;
+  top: auto;
+  right: auto;
+  max-width: 260px;
+  max-height: 60%;
+  overflow: auto;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--background-secondary-alt);
+  border: 1px solid var(--background-modifier-border);
+  color: var(--text-normal);
+  font-size: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.kb-graph-preview-title {
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.kb-graph-preview-body {
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  color: var(--text-muted);
+}
+
+.kb-graph-preview-meta {
+  font-size: 0.85em;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.kb-graph-preview-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 4px;
+}
+
+/* Small status/tag pill, shared by the graph tooltip and search modal. */
+
+.kb-chip {
+  display: inline-block;
+  font-size: 0.75em;
+  line-height: 1.4;
+  padding: 1px 7px;
+  border-radius: 9px;
+  background: var(--background-modifier-border);
+  color: var(--text-muted);
+}
+
+/* Global thought search modal. */
+
+.kb-search-modal .kb-search-input {
+  width: 100%;
+  margin-bottom: 8px;
+}
+
+.kb-search-modal .kb-search-results {
+  max-height: 60vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.kb-search-modal .kb-search-row {
+  padding: 6px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.kb-search-modal .kb-search-row.kb-search-row-active,
+.kb-search-modal .kb-search-row:hover {
+  background: var(--background-modifier-hover);
+}
+
+.kb-search-modal .kb-search-title {
+  font-weight: 600;
+  color: var(--text-normal);
+}
+
+.kb-search-modal .kb-search-snippet {
+  font-size: 0.85em;
+  color: var(--text-muted);
+  overflow-wrap: break-word;
+}
+
+.kb-search-modal .kb-search-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 3px;
+}
+
+.kb-search-modal .kb-search-empty {
+  color: var(--text-muted);
+  font-size: 0.9em;
+}
+
+.kb-tags-input {
+  width: 100%;
+}
+
+/* AI tag/status suggestion modals. */
+
+.kb-ai-hint {
+  color: var(--text-muted);
+  font-size: 0.9em;
+}
+
+.kb-ai-status {
+  font-size: 1.1em;
+  font-weight: 600;
+  color: var(--text-normal);
+  margin: 4px 0;
+}
+
+.kb-ai-reason {
+  color: var(--text-muted);
+  font-size: 0.9em;
+}
+
+.kb-status-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.kb-status-btn {
+  flex: 1;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.kb-graph-toolbar select.kb-graph-filter {
+  max-width: 140px;
+}
+
+.kb-graph-view .kb-graph-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  text-align: center;
+  padding: 24px;
+}
+
+.kb-chat-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.kb-chat-view .kb-chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+}
+
+.kb-chat-view .kb-chat-msg {
+  margin-bottom: 14px;
+  display: flex;
+  flex-direction: column;
+}
+
+.kb-chat-view .kb-chat-msg.kb-user {
+  align-items: flex-end;
+}
+
+.kb-chat-view .kb-chat-bubble {
+  max-width: 85%;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: var(--background-secondary);
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.kb-chat-view .kb-chat-msg.kb-user .kb-chat-bubble {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+
+.kb-chat-view .kb-chat-msg.kb-assistant .kb-chat-bubble {
+  background: var(--background-secondary-alt);
+}
+
+.kb-chat-view .kb-chat-msg .kb-chat-reasoning {
+  max-width: 85%;
+  padding: 6px 10px;
+  border-radius: 8px;
+  margin-bottom: 6px;
+  background: var(--background-modifier-border);
+  color: var(--text-muted);
+  font-size: 0.85em;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.kb-chat-view .kb-chat-error {
+  color: var(--text-error);
+  font-size: 0.9em;
+  margin: 4px 12px;
+}
+
+.kb-chat-view .kb-chat-copy {
+  align-self: flex-end;
+  margin: 4px 2px 0;
+  padding: 2px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.8em;
+  opacity: 0.7;
+}
+
+.kb-chat-view .kb-chat-copy:hover {
+  opacity: 1;
+}
+
+.kb-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.kb-title-copy {
+  padding: 2px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.8em;
+}
+
+.kb-chat-view .kb-chat-input-row {
+  display: flex;
+  gap: 8px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+.kb-chat-view .kb-chat-input-row textarea {
+  flex: 1;
+  resize: none;
+  min-height: 36px;
+  max-height: 140px;
+}
+
+.kb-chat-view .kb-chat-context {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px;
+  font-size: 0.85em;
+  color: var(--text-muted);
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+.kb-recycle-view {
+  padding: 12px;
+}
+
+.kb-recycle-view .kb-recycle-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.kb-recycle-view .kb-recycle-item .kb-recycle-title {
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.kb-suggestions {
+  margin-top: 6px;
+}
+
+.kb-suggestions .kb-suggestion {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 6px 8px;
+  margin: 3px 0;
+  border-radius: 6px;
+  background: var(--background-secondary-alt);
+  cursor: pointer;
+  font-size: 0.9em;
+  white-space: normal;
+  overflow-wrap: break-word;
+}
+
+.kb-suggestions .kb-suggestion:hover {
+  background: var(--background-modifier-hover);
+}
+
+/* Follow-up questions pane (right sidebar) and chat follow-ups section. */
+
+.kb-followups-view {
+  padding: 10px 12px;
+}
+
+.kb-followups-view .kb-followups-hint {
+  color: var(--text-muted);
+  font-size: 0.9em;
+  padding-top: 8px;
+}
+
+/* Backlinks pane. */
+
+.kb-backlinks-view {
+  padding: 10px 12px;
+}
+
+.kb-backlinks-view .kb-backlinks-header {
+  margin-bottom: 8px;
+  font-size: 0.9em;
+  color: var(--text-normal);
+}
+
+.kb-backlinks-view .kb-backlinks-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.kb-backlinks-view .kb-backlinks-item {
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--background-secondary-alt);
+  cursor: pointer;
+}
+
+.kb-backlinks-view .kb-backlinks-item:hover {
+  background: var(--background-modifier-hover);
+}
+
+.kb-backlinks-view .kb-backlinks-title {
+  font-size: 0.9em;
+  color: var(--text-normal);
+}
+
+.kb-backlinks-view .kb-backlinks-label {
+  font-size: 0.8em;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+/* Combined backlinks + siblings pane. */
+
+.kb-combined-sidebar {
+  padding: 10px 12px;
+  height: 100%;
+  overflow-y: auto;
+}
+
+.kb-combined-sidebar .kb-siblings-list,
+.kb-combined-sidebar .kb-backlinks-list {
+  margin-bottom: 12px;
+}
+
+/* Siblings pane. */
+
+.kb-siblings-view {
+  padding: 10px 12px;
+}
+
+.kb-siblings-view .kb-siblings-header {
+  margin-bottom: 8px;
+  font-size: 0.9em;
+  color: var(--text-normal);
+}
+
+.kb-siblings-view .kb-siblings-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.kb-siblings-view .kb-siblings-item {
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--background-secondary-alt);
+  cursor: pointer;
+}
+
+.kb-siblings-view .kb-siblings-item:hover {
+  background: var(--background-modifier-hover);
+}
+
+.kb-siblings-view .kb-siblings-title {
+  font-size: 0.9em;
+  color: var(--text-normal);
+}
+
+.kb-followups-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 0.9em;
+  color: var(--text-normal);
+}
+
+.kb-followups-group {
+  margin-bottom: 10px;
+}
+
+.kb-followups-group-label {
+  font-size: 0.75em;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-faint);
+  margin-bottom: 3px;
+}
+
+.kb-followups-section {
+  margin-top: 10px;
+  border-top: 1px solid var(--background-modifier-border);
+  padding-top: 8px;
+}
+
+.kb-followups-section .kb-followups-header {
+  margin-bottom: 4px;
+}
+
+/* Suggestion rows with a copy button (chat suggested titles + follow-ups). */
+
+.kb-copy-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 6px 0;
+}
+
+.kb-copy-row .kb-suggestion {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  height: auto;
+  line-height: 1.5;
+  white-space: normal;
+  overflow-wrap: break-word;
+}
+
+.kb-copy-row .kb-copy-btn {
+  flex: 0 0 auto;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.8em;
+}
+
+/* Two-line follow-up question row: question on its own line, "answered in …"
+   as a smaller, muted second line. Obsidian's default button line-height
+   would clip the second line, so it is set explicitly here. */
+
+.kb-followup-row {
+  align-items: stretch;
+}
+
+.kb-followup-row .kb-suggestion {
+  display: block;
+  height: auto;
+  min-height: 0;
+  line-height: 1.5;
+  padding-top: 5px;
+  padding-bottom: 5px;
+}
+
+.kb-followup-question,
+.kb-followup-answered {
+  display: block;
+}
+
+.kb-followup-question {
+  white-space: normal;
+  overflow-wrap: break-word;
+}
+
+.kb-followup-answered {
+  margin-top: 2px;
+  font-size: 0.8em;
+  line-height: 1.4;
+  color: var(--text-muted);
+  white-space: normal;
+  overflow-wrap: break-word;
+}
