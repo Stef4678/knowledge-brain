@@ -2,7 +2,7 @@
 
 An Obsidian desktop plugin that turns Markdown notes into a connected knowledge graph. Knowledge Brain organizes notes as **thoughts** in a directed acyclic graph (DAG), adds local full-text search, and provides AI-assisted chat and knowledge-management workflows.
 
-> **Status:** Early release — version 0.1.1
+> **Status:** Early release — version 0.2.0
 
 ## Features
 
