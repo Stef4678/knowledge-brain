@@ -26,7 +26,6 @@ https://github.com/user-attachments/assets/2ff1f2d0-8080-413c-abaa-d0d7ab488f53
   - Critical
 - Browse backlinks, siblings, descendants, and related thoughts.
 - Search thoughts from a global search modal.
-- Recycle, restore, or permanently purge deleted thoughts.
 - Store knowledge-graph metadata in Markdown frontmatter, keeping the data portable.
 
 ## Supported AI providers
