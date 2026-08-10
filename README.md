@@ -204,7 +204,7 @@ Potential future improvements include:
 
 ## Author
 
-Created by [Kerekes Stefan](https://github.com/Stef4678). If you find Knowledge Brain useful, consider [buying me a coffee](https://www.buymeacoffee.com/Stef4678). 
+Created by [Kerekes Stefan](https://github.com/Stef4678).
 
 ## License
 
