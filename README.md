@@ -186,12 +186,11 @@ Review each provider's terms and privacy policy before sending vault content to 
 
 Potential future improvements include:
 
-- Automated builds via GitHub Actions (build + release on version tag)
-- More granular control over which vault folders are indexed
-- Additional AI providers and local-model support (e.g., Ollama, LM Studio)
-- Import and export tools for graph metadata
-- More graph layouts and filtering options
-- Automated tests for indexing, graph validation, and provider integrations
+- **OpenAI-compatible endpoint support** — custom base URL + key, unlocking local models (LM Studio, Ollama) and alternative providers (Mistral, Groq, OpenRouter) with one code path
+- **Canvas / Excalidraw export** — render the thought graph as an Obsidian Canvas file for presentations and sharing
+- **Graph view improvements** — additional layouts (concentric, cose), depth-limited neighborhood view around the active note, path highlighting between two thoughts
+- **Chat with multiple thoughts as context** — pin several notes, not just one; auto-retrieve top-k relevant thoughts via BM25 as chat context (RAG-lite)
+- **Graph import/export** — JSON dump/restore of nodes, edges, and metadata for backups and migration (the logic already exists internally)
 
 ## Author
 
