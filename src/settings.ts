@@ -71,7 +71,7 @@ export const DEFAULT_SETTINGS: PluginSettings = {
   followupGroups: Object.fromEntries(
     QUESTION_TYPES.map((q) => [q, true]),
   ) as Record<QuestionType, boolean>,
-  supportUrl: "https://www.buymeacoffee.com/",
+  supportUrl: "https://www.buymeacoffee.com/Stef4678",
 };
 
 /**
