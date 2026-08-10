@@ -6,6 +6,8 @@ An Obsidian desktop plugin that turns Markdown notes into a connected knowledge 
 
 ## Features
 
+https://github.com/user-attachments/assets/2ff1f2d0-8080-413c-abaa-d0d7ab488f53
+
 - Convert Markdown notes in an Obsidian vault into connected thoughts.
 - Link thoughts through parent-child relationships while preventing cycles.
 - Visualize the knowledge base as an interactive graph.
