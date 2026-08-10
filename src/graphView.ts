@@ -4,11 +4,15 @@ import { FOLLOWUP_GROUPS } from "./ai";
 import type { AiService, FollowupGroup, FollowupQuestion } from "./ai";
 import { SuggestStatusModal, SuggestTagsModal } from "./aiModals";
 import { findSimilarPairs, type SimilarPair } from "./bm25";
+import { findShortestPath, neighborhoodIds } from "./graphAlgos";
 import { KnowledgeBase } from "./knowledgeBase";
 import { QUESTION_TYPES, THOUGHT_STATUSES } from "./types";
-import type { PluginSettings } from "./types";
+import type { GraphData, GraphNode, PluginSettings, ThoughtLink } from "./types";
 
 export const GRAPH_VIEW_TYPE = "knowledge-brain-graph";
+
+/** Graph layouts selectable from the toolbar. */
+type LayoutName = "breadthfirst" | "concentric" | "cose";
 
 /**
  * Read a CSS variable from the body, with a fallback for canvas rendering.
@@ -66,6 +70,19 @@ export class GraphView extends ItemView {
   private statusFilter = "";
   /** "" = all tags; otherwise an exact tag. */
   private tagFilter = "";
+  /** Selected graph layout. */
+  private layoutName: LayoutName = "breadthfirst";
+  /** Neighborhood depth around the focus thought; 0 = show everything. */
+  private neighborhoodDepth = 0;
+  /** Last indexed thought the user opened (the auto neighborhood center). */
+  private activeNoteId: string | null = null;
+  /** Manual neighborhood center; null falls back to the active note. */
+  private focusId: string | null = null;
+  /** Endpoints of the highlighted path (both set = path active). */
+  private pathSourceId: string | null = null;
+  private pathTargetId: string | null = null;
+  /** The "Clear path" toolbar button (always present, hidden when inactive). */
+  private clearPathBtn: HTMLButtonElement | null = null;
   private previewEl: HTMLElement | null = null;
   private previewHideTimer: number | null = null;
   /** True while the pointer is over a node; wheel zoom is blocked then. */
@@ -115,13 +132,42 @@ export class GraphView extends ItemView {
       this.spacing = 3;
     }
     this.unsubscribe = this.kb.onChange(() => this.render());
+    // Seed the neighborhood center with whatever note is active on open.
+    const file = this.app.workspace.getActiveFile();
+    if (
+      file instanceof TFile &&
+      file.extension === "md" &&
+      this.kb.getRecord(file.basename)
+    ) {
+      this.activeNoteId = file.basename;
+    }
     // The preview is mounted on <body> (not inside this container), so it would
     // keep showing even after the graph tab loses focus. Hide it the moment the
     // graph view is no longer the active leaf — e.g. when the user opens a note.
+    // The same event tracks the active thought for the neighborhood view.
     this.registerEvent(
       this.app.workspace.on("active-leaf-change", (leaf) => {
         if (leaf !== this.leaf) {
           this.hidePreview();
+        }
+        const current = this.app.workspace.getActiveFile();
+        // Only ever SET the tracked note — never null it out. Focusing the
+        // graph tab (or another non-note view) yields getActiveFile() === null
+        // and would otherwise wipe the neighborhood center mid-look.
+        if (
+          current instanceof TFile &&
+          current.extension === "md" &&
+          this.kb.getRecord(current.basename)
+        ) {
+          const next = current.basename;
+          if (next !== this.activeNoteId) {
+            this.activeNoteId = next;
+            // Follow the active note only in auto mode (no manual focus) and
+            // only when the neighborhood view is actually engaged.
+            if (this.neighborhoodDepth > 0 && this.focusId === null) {
+              this.render();
+            }
+          }
         }
       }),
     );
@@ -245,22 +291,9 @@ export class GraphView extends ItemView {
       return;
     }
 
-    // Apply status + tag filters. Edges whose endpoints are filtered out go too.
-    let nodes = graph.nodes;
-    if (this.statusFilter) {
-      nodes = nodes.filter((n) =>
-        this.statusFilter === NO_STATUS_FILTER
-          ? !n.status
-          : n.status === this.statusFilter,
-      );
-    }
-    if (this.tagFilter) {
-      nodes = nodes.filter((n) => n.tags.includes(this.tagFilter));
-    }
-    const kept = new Set(nodes.map((n) => n.id));
-    const edges = graph.edges.filter(
-      (e) => kept.has(e.parent_id) && kept.has(e.child_id),
-    );
+    // Apply status/tag filters, then the neighborhood view. Edges whose
+    // endpoints are filtered out go too.
+    const { nodes, edges } = this.computeFilteredGraph(graph);
 
     const canvas = this.container.createDiv({ cls: "kb-graph-canvas" });
     const toolbar = this.container.createDiv({ cls: "kb-graph-toolbar" });
@@ -324,6 +357,92 @@ export class GraphView extends ItemView {
       this.setSpacing(v);
       this.relayout();
     };
+
+    toolbar.createSpan({ text: "Layout:" });
+    const layoutSelect = toolbar.createEl("select") as HTMLSelectElement;
+    layoutSelect.addClass("kb-graph-filter");
+    const layoutOptions: Array<[LayoutName, string]> = [
+      ["breadthfirst", "Breadth-first"],
+      ["concentric", "Concentric"],
+      ["cose", "CoSE (force)"],
+    ];
+    for (const [value, label] of layoutOptions) {
+      layoutSelect.createEl("option", { text: label, attr: { value } });
+    }
+    layoutSelect.value = this.layoutName;
+    layoutSelect.onchange = () => {
+      this.layoutName = layoutSelect.value as LayoutName;
+      // Fit so the newly arranged graph is fully visible; classes persist on
+      // the same cy instance, so re-apply the path highlight afterwards.
+      this.runLayout(true);
+      this.applyPathHighlight();
+    };
+
+    toolbar.createSpan({ text: "Neighborhood:" });
+    const hoodSelect = toolbar.createEl("select") as HTMLSelectElement;
+    hoodSelect.addClass("kb-graph-filter");
+    const hoodOptions: Array<[string, string]> = [
+      ["0", "Off"],
+      ["1", "1 hop"],
+      ["2", "2 hops"],
+      ["3", "3 hops"],
+    ];
+    for (const [value, label] of hoodOptions) {
+      hoodSelect.createEl("option", { text: label, attr: { value } });
+    }
+    hoodSelect.value = String(this.neighborhoodDepth);
+    hoodSelect.onchange = () => {
+      this.neighborhoodDepth = Number(hoodSelect.value);
+      this.render();
+    };
+
+    if (this.neighborhoodDepth > 0) {
+      const focus = this.currentFocus();
+      const focusLabel = toolbar.createSpan({
+        cls: "kb-graph-focus-label",
+        text: focus ? `Focus: ${focus}` : "Focus: none",
+      });
+      void focusLabel;
+      const changeFocus = toolbar.createEl("button", {
+        cls: "mod-muted",
+        text: "Change",
+        attr: { title: "Pick a thought to center the neighborhood on" },
+      });
+      changeFocus.onclick = () => this.chooseFocus();
+      const clearFocus = toolbar.createEl("button", {
+        cls: "mod-muted",
+        text: "✕",
+        attr: { title: "Center on the active note instead" },
+      });
+      clearFocus.onclick = () => {
+        this.focusId = null;
+        this.render();
+      };
+    }
+
+    const pathBtn = toolbar.createEl("button", {
+      cls: "mod-muted",
+      text: "Highlight path",
+      attr: { title: "Highlight the shortest path between two thoughts" },
+    });
+    pathBtn.onclick = () => this.showPathPicker();
+    // Always render the clear button (hidden unless a path is active) so it is
+    // present in the toolbar without requiring a full re-render to appear.
+    const clearPath = toolbar.createEl("button", {
+      cls: "mod-muted",
+      text: "Clear path",
+      attr: { title: "Remove the path highlight" },
+    });
+    clearPath.style.display =
+      this.pathSourceId && this.pathTargetId ? "" : "none";
+    clearPath.onclick = () => {
+      this.pathSourceId = null;
+      this.pathTargetId = null;
+      this.clearPathBtn?.remove();
+      this.clearPathBtn = null;
+      this.applyPathHighlight();
+    };
+    this.clearPathBtn = clearPath;
 
     const legend = this.container.createDiv({ cls: "kb-graph-legend" });
     legend.createSpan({ text: "click a node to open" });
@@ -442,6 +561,36 @@ export class GraphView extends ItemView {
             "border-color": cssVar("--text-accent", "#888"),
           },
         },
+        {
+          selector: "node.kb-graph-focus",
+          style: {
+            "border-width": 4,
+            "border-color": cssVar("--interactive-accent", "#888"),
+            "text-outline-width": 2,
+            "text-outline-color": cssVar("--background-primary", "#fff"),
+          },
+        },
+        {
+          selector: "node.kb-path-node",
+          style: {
+            "border-width": 3,
+            "border-color": cssVar("--text-accent", "#888"),
+          },
+        },
+        {
+          selector: "edge.kb-path-edge",
+          style: {
+            "line-color": cssVar("--text-accent", "#888"),
+            "target-arrow-color": cssVar("--text-accent", "#888"),
+            width: 3,
+          },
+        },
+        {
+          selector: "node.kb-dimmed, edge.kb-dimmed",
+          style: {
+            opacity: 0.12,
+          },
+        },
       ],
       wheelSensitivity: 0.2,
     });
@@ -482,6 +631,7 @@ export class GraphView extends ItemView {
       this.lastLayoutH = canvas.clientHeight;
     }
     this.observeCanvas(canvas);
+    this.applyPathHighlight();
 
     cy.on("tap", "node", (evt) => {
       this.openThought(String(evt.target.id()));
@@ -527,19 +677,57 @@ export class GraphView extends ItemView {
     this.resizeObs.observe(canvas);
   }
 
-  /** Run the breadthfirst layout. `fit` fits the whole graph into the view. */
+  /**
+   * Run the selected layout. `fit` fits the whole graph into the view. All
+   * layouts honor `spacing` via `spacingFactor` so the spacing slider keeps
+   * working across them.
+   */
   private runLayout(fit: boolean): void {
     if (!this.cy) {
       return;
     }
-    this.cy.elements().layout({
-      name: "breadthfirst",
-      directed: true,
-      roots: this.cy.nodes().filter((n) => n.indegree() === 0).map((n) => n.id()),
-      spacingFactor: this.spacing,
-      animate: false,
-      fit,
-    } as cytoscape.LayoutOptions).run();
+    switch (this.layoutName) {
+      case "concentric":
+        this.cy.elements().layout({
+          name: "concentric",
+          spacingFactor: this.spacing,
+          minNodeSpacing: 12,
+          avoidOverlap: true,
+          nodeDimensionsIncludeLabels: true,
+          concentric: (node: cytoscape.NodeSingular) => node.degree(),
+          levelWidth: () => 1,
+          animate: false,
+          fit,
+        } as cytoscape.LayoutOptions).run();
+        break;
+      case "cose":
+        this.cy.elements().layout({
+          name: "cose",
+          randomize: true,
+          // Let the physics treat labels as part of the node box so labels of
+          // adjacent nodes don't collide; the spacing slider is applied below.
+          nodeDimensionsIncludeLabels: true,
+          animate: false,
+          fit: false,
+        } as cytoscape.LayoutOptions).run();
+        // This cytoscape build applies layout `spacingFactor` only through the
+        // animated layoutPositions path, which animate:false skips — so the
+        // slider silently did nothing on cose. Replicate the dilation here.
+        this.dilateSpacing();
+        if (fit) {
+          this.cy.fit(this.cy.elements(), 50);
+        }
+        break;
+      default:
+        this.cy.elements().layout({
+          name: "breadthfirst",
+          directed: true,
+          roots: this.cy.nodes().filter((n) => n.indegree() === 0).map((n) => n.id()),
+          spacingFactor: this.spacing,
+          animate: false,
+          fit,
+        } as cytoscape.LayoutOptions).run();
+    }
   }
 
   /**
@@ -576,6 +764,135 @@ export class GraphView extends ItemView {
     // fit:false keeps the current zoom/pan — moving the slider changes node
     // positions only, so nodes and edges never shrink.
     this.runLayout(false);
+  }
+
+  /** Scale every node's position away from the graph center by `spacing`. */
+  private dilateSpacing(): void {
+    if (!this.cy) {
+      return;
+    }
+    const box = this.cy.elements().boundingBox();
+    const midX = box.x1 + (box.x2 - box.x1) / 2;
+    const midY = box.y1 + (box.y2 - box.y1) / 2;
+    this.cy.nodes().forEach((n) => {
+      const p = n.position();
+      n.position({
+        x: midX + (p.x - midX) * this.spacing,
+        y: midY + (p.y - midY) * this.spacing,
+      });
+    });
+  }
+
+  /**
+   * The nodes/edges actually shown: status + tag filters, then the
+   * neighborhood of the focus thought when neighborhood view is on. Shared by
+   * render() and applyPathHighlight() so both operate on the same visible set.
+   */
+  private computeFilteredGraph(graph: GraphData): {
+    nodes: GraphNode[];
+    edges: ThoughtLink[];
+  } {
+    let nodes = graph.nodes;
+    if (this.statusFilter) {
+      nodes = nodes.filter((n) =>
+        this.statusFilter === NO_STATUS_FILTER
+          ? !n.status
+          : n.status === this.statusFilter,
+      );
+    }
+    if (this.tagFilter) {
+      nodes = nodes.filter((n) => n.tags.includes(this.tagFilter));
+    }
+    let kept = new Set(nodes.map((n) => n.id));
+    let edges = graph.edges.filter(
+      (e) => kept.has(e.parent_id) && kept.has(e.child_id),
+    );
+    if (this.neighborhoodDepth > 0) {
+      const focus = this.currentFocus();
+      if (focus && kept.has(focus)) {
+        const hood = neighborhoodIds(focus, this.neighborhoodDepth, edges);
+        nodes = nodes.filter((n) => hood.has(n.id));
+        kept = new Set(nodes.map((n) => n.id));
+        edges = edges.filter(
+          (e) => kept.has(e.parent_id) && kept.has(e.child_id),
+        );
+      }
+    }
+    return { nodes, edges };
+  }
+
+  /** The neighborhood center: manual override, else the active note, if indexed. */
+  private currentFocus(): string | null {
+    const id = this.focusId ?? this.activeNoteId;
+    return id && this.kb.getRecord(id) ? id : null;
+  }
+
+  /** Apply the focus ring + path highlight to the current graph. */
+  private applyPathHighlight(): void {
+    if (!this.cy) {
+      return;
+    }
+    this.cy
+      .elements()
+      .removeClass("kb-graph-focus kb-path-node kb-path-edge kb-dimmed");
+    const { nodes, edges } = this.computeFilteredGraph(this.kb.getGraph(true));
+    if (this.neighborhoodDepth > 0) {
+      const focus = this.currentFocus();
+      if (focus && nodes.some((n) => n.id === focus)) {
+        this.cy.getElementById(focus).addClass("kb-graph-focus");
+      }
+    }
+    if (!this.pathSourceId || !this.pathTargetId) {
+      return;
+    }
+    const path = findShortestPath(this.pathSourceId, this.pathTargetId, edges);
+    if (!path) {
+      return;
+    }
+    if (path.length === 1) {
+      this.cy.getElementById(this.pathSourceId).addClass("kb-path-node");
+      return;
+    }
+    const pathSet = new Set(path);
+    this.cy.nodes().forEach((n) => {
+      n.addClass(pathSet.has(n.id()) ? "kb-path-node" : "kb-dimmed");
+    });
+    const edgeIds = new Set<string>();
+    for (let i = 0; i < path.length - 1; i++) {
+      const a = path[i];
+      const b = path[i + 1];
+      const e = edges.find(
+        (edge) =>
+          (edge.parent_id === a && edge.child_id === b) ||
+          (edge.parent_id === b && edge.child_id === a),
+      );
+      if (e) {
+        edgeIds.add(e.id);
+      }
+    }
+    this.cy.edges().forEach((e) => {
+      e.addClass(edgeIds.has(String(e.id())) ? "kb-path-edge" : "kb-dimmed");
+    });
+  }
+
+  /** Open the modal that picks the two endpoints of the path to highlight. */
+  private showPathPicker(): void {
+    new PathPickerModal(this.app, this.kb, (source, target) => {
+      this.pathSourceId = source;
+      this.pathTargetId = target;
+      if (this.clearPathBtn) {
+        this.clearPathBtn.style.display = "";
+      }
+      this.applyPathHighlight();
+    }).open();
+  }
+
+  /** Open the modal that picks the neighborhood center. */
+  private chooseFocus(): void {
+    new FocusPickerModal(this.app, this.kb, (id) => {
+      this.focusId = id;
+      this.render();
+    }).open();
   }
 
   /** Show the most similar thoughts in the default folder (local, no API). */
@@ -644,6 +961,158 @@ export class GraphView extends ItemView {
     if (window.confirm(`Delete "${thought.title}"? This cannot be undone.`)) {
       await this.kb.deleteThought(id, false);
     }
+  }
+}
+
+const PICKER_MAX = 12;
+
+/**
+ * A searchable thought picker: an input that filters the KB (via the memoized
+ * BM25 index) plus a list of clickable result rows. Picking fills the input
+ * with the chosen title and fires `onPick` with its id.
+ */
+function buildThoughtPicker(
+  container: HTMLElement,
+  kb: KnowledgeBase,
+  onPick: (id: string) => void,
+  placeholder: string,
+): HTMLInputElement {
+  const input = container.createEl("input", {
+    cls: "kb-search-input",
+    attr: { type: "text", placeholder },
+  });
+  const results = container.createDiv({ cls: "kb-search-results" });
+  let debounce: number | null = null;
+  const render = (query: string) => {
+    const items = query.trim()
+      ? kb.search(query.trim(), PICKER_MAX)
+      : [...kb.listRecords()].reverse().slice(0, PICKER_MAX);
+    results.empty();
+    if (items.length === 0) {
+      results.createEl("p", {
+        cls: "kb-search-empty",
+        text: "No matching thoughts.",
+      });
+      return;
+    }
+    for (const rec of items) {
+      const row = results.createDiv({ cls: "kb-search-row" });
+      row.createDiv({ cls: "kb-search-title", text: rec.title });
+      row.onclick = () => {
+        input.value = rec.title;
+        results.empty();
+        onPick(rec.id);
+      };
+    }
+  };
+  input.oninput = () => {
+    if (debounce !== null) {
+      window.clearTimeout(debounce);
+    }
+    debounce = window.setTimeout(() => render(input.value), 80);
+  };
+  render("");
+  return input;
+}
+
+/** Pick two thoughts; highlights the shortest path between them. */
+class PathPickerModal extends Modal {
+  private kb: KnowledgeBase;
+  private onHighlight: (source: string, target: string) => void;
+  private source: string | null = null;
+  private target: string | null = null;
+  private applyBtn: HTMLButtonElement;
+
+  constructor(
+    app: App,
+    kb: KnowledgeBase,
+    onHighlight: (source: string, target: string) => void,
+  ) {
+    super(app);
+    this.kb = kb;
+    this.onHighlight = onHighlight;
+  }
+
+  onOpen(): void {
+    const { contentEl } = this;
+    contentEl.addClass("kb-search-modal");
+    contentEl.createEl("h3", { text: "Highlight path" });
+    contentEl.createEl("p", {
+      cls: "setting-item-description",
+      text: "Pick two thoughts — the shortest connecting path is highlighted.",
+    });
+    buildThoughtPicker(
+      contentEl,
+      this.kb,
+      (id) => {
+        this.source = id;
+        this.updateApply();
+      },
+      "Source thought…",
+    );
+    buildThoughtPicker(
+      contentEl,
+      this.kb,
+      (id) => {
+        this.target = id;
+        this.updateApply();
+      },
+      "Target thought…",
+    );
+    this.applyBtn = contentEl.createEl("button", {
+      cls: "mod-cta",
+      text: "Highlight",
+    }) as HTMLButtonElement;
+    this.applyBtn.disabled = true;
+    this.applyBtn.onclick = () => {
+      if (this.source && this.target) {
+        this.close();
+        this.onHighlight(this.source, this.target);
+      }
+    };
+  }
+
+  onClose(): void {
+    this.contentEl.empty();
+  }
+
+  private updateApply(): void {
+    this.applyBtn.disabled = !(this.source && this.target);
+  }
+}
+
+/** Pick the thought the neighborhood view is centered on. */
+class FocusPickerModal extends Modal {
+  private kb: KnowledgeBase;
+  private onPick: (id: string) => void;
+
+  constructor(app: App, kb: KnowledgeBase, onPick: (id: string) => void) {
+    super(app);
+    this.kb = kb;
+    this.onPick = onPick;
+  }
+
+  onOpen(): void {
+    const { contentEl } = this;
+    contentEl.addClass("kb-search-modal");
+    contentEl.createEl("h3", { text: "Focus neighborhood on…" });
+    contentEl.createEl("p", {
+      cls: "setting-item-description",
+      text: "Pick a thought; only its surrounding thoughts are shown.",
+    });
+    buildThoughtPicker(
+      contentEl,
+      this.kb,
+      (id) => {
+        this.close();
+        this.onPick(id);
+      },
+      "Thought to focus…",
+    );
+  }
+
+  onClose(): void {
+    this.contentEl.empty();
   }
 }
 

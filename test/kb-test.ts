@@ -5,6 +5,7 @@
 import { KnowledgeBase, sanitizeTitle } from "../src/knowledgeBase";
 import { QUESTION_TYPES } from "../src/types";
 import { buildBm25Index, findSimilarPairs, tokenCosine } from "../src/bm25";
+import { findShortestPath, neighborhoodIds } from "../src/graphAlgos";
 import { FakeVault, fakeApp } from "./obsidian-stub";
 
 let failures = 0;
@@ -272,7 +273,7 @@ async function main(): Promise<void> {
     check("createThought sets status", t1.status === "in progress");
     const file1 = vault.files.get("T1.md") ?? "";
     check("tags written to file", /tags:\n\s*- x\n\s*- ['"]?y/.test(file1), file1);
-    check("status written to file", /status: ["']?in progress/.test(file1), file1);
+    check("status written to file", /status: ['"]?in progress/.test(file1), file1);
 
     const g = kb.getGraph();
     const node1 = g.nodes.find((n) => n.id === "T1")!;
@@ -391,6 +392,55 @@ async function main(): Promise<void> {
       pairs,
     );
     check("findSimilarPairs excludes unrelated", !pairs.some((p) => p.a === "Bread" && p.b === "Life"));
+  }
+
+  // ---------------------------------------------------- graph algorithms
+  {
+    const edges = [
+      { id: "A→B", parent_id: "A", child_id: "B", label: "" },
+      { id: "B→C", parent_id: "B", child_id: "C", label: "" },
+      { id: "C→D", parent_id: "C", child_id: "D", label: "" },
+      { id: "E→C", parent_id: "E", child_id: "C", label: "" },
+    ];
+    check(
+      "neighborhood: depth 0 = center only",
+      [...neighborhoodIds("B", 0, edges)].sort().join() === "B",
+    );
+    check(
+      "neighborhood: depth 1 = immediate neighbors",
+      [...neighborhoodIds("B", 1, edges)].sort().join() === "A,B,C",
+      [...neighborhoodIds("B", 1, edges)].sort(),
+    );
+    check(
+      "neighborhood: depth 2 reaches further",
+      [...neighborhoodIds("B", 2, edges)].sort().join() === "A,B,C,D,E",
+      [...neighborhoodIds("B", 2, edges)].sort(),
+    );
+    check(
+      "neighborhood: walks edges child→parent too",
+      neighborhoodIds("A", 1, edges).has("B"),
+    );
+    check(
+      "neighborhood: isolated center is just itself",
+      [...neighborhoodIds("Z", 2, edges)].sort().join() === "Z",
+    );
+    check(
+      "shortest path A→D",
+      findShortestPath("A", "D", edges)?.join() === "A,B,C,D",
+      findShortestPath("A", "D", edges),
+    );
+    check(
+      "shortest path D→A is undirected",
+      findShortestPath("D", "A", edges)?.join() === "D,C,B,A",
+    );
+    check(
+      "shortest path same node",
+      findShortestPath("B", "B", edges)?.join() === "B",
+    );
+    check(
+      "shortest path disconnected → null",
+      findShortestPath("A", "Z", edges) === null,
+    );
   }
 
   // -------------------------------------------------------- sanitizeTitle

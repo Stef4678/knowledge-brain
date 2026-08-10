@@ -89,7 +89,4 @@ export interface PluginSettings {
   followupCount: number;
   /** Which follow-up question groups are enabled. */
   followupGroups: Record<QuestionType, boolean>;
-  /** Buy Me a Coffee (or other support) URL shown in the settings tab. */
-  supportUrl: string;
 }
-

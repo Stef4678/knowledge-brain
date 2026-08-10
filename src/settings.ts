@@ -71,7 +71,6 @@ export const DEFAULT_SETTINGS: PluginSettings = {
   followupGroups: Object.fromEntries(
     QUESTION_TYPES.map((q) => [q, true]),
   ) as Record<QuestionType, boolean>,
-  supportUrl: "https://www.buymeacoffee.com/Stef4678",
 };
 
 /**
@@ -138,18 +137,6 @@ export class KnowledgeBrainSettingsTab extends PluginSettingTab {
       text: "Knowledge Brain turns your markdown notes into a connected knowledge graph. Notes become “thoughts” linked through `parents:` frontmatter and visualized in an interactive graph. Chat with your notes, get AI-assisted tag and status suggestions, and receive follow-up questions to deepen your thinking.",
       cls: "setting-item-description",
     });
-
-    new Setting(containerEl)
-      .setName("Support Knowledge Base")
-      .setDesc("If you find Knowledge Base useful, consider supporting its development!")
-      .addButton((button) =>
-        button.setButtonText("Buy Me a Coffee").setCta().onClick(() => {
-          const url = this.settings.supportUrl || DEFAULT_SETTINGS.supportUrl;
-          if (url) {
-            window.open(url, "_blank");
-          }
-        }),
-      );
 
     new Setting(containerEl)
       .setName("Provider")
