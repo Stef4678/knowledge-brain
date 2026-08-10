@@ -27,7 +27,7 @@ __export(main_exports, {
   default: () => KnowledgeBrainPlugin
 });
 module.exports = __toCommonJS(main_exports);
-var import_obsidian14 = require("obsidian");
+var import_obsidian13 = require("obsidian");
 
 // src/knowledgeBase.ts
 var import_obsidian = require("obsidian");
@@ -173,7 +173,6 @@ var KB_KEYS = /* @__PURE__ */ new Set([
   "question_type",
   "tags",
   "status",
-  "deleted_at",
   "created_at",
   "updated_at"
 ]);
@@ -258,9 +257,6 @@ function serializeThought(rec) {
   if (rec.status) {
     fm.status = rec.status;
   }
-  if (rec.deleted_at) {
-    fm.deleted_at = rec.deleted_at;
-  }
   fm.created_at = rec.created_at;
   fm.updated_at = rec.updated_at;
   return `---
@@ -279,7 +275,6 @@ function guessTimestamp(file) {
 var KnowledgeBase = class {
   constructor(app) {
     this.records = /* @__PURE__ */ new Map();
-    this.deletedRecords = /* @__PURE__ */ new Map();
     this.listeners = /* @__PURE__ */ new Set();
     this.eventRefs = [];
     this.pending = /* @__PURE__ */ new Set();
@@ -362,9 +357,6 @@ var KnowledgeBase = class {
     }
     this.notify();
   }
-  isTrashPath(path) {
-    return path.startsWith(".trash/") || path === ".trash";
-  }
   isIgnoredPath(path) {
     return path.startsWith(".obsidian/") || path.startsWith(".trash/") || path === ".trash";
   }
@@ -421,24 +413,17 @@ var KnowledgeBase = class {
   }
   /** Full rescan of the vault. Used on startup and as a safety net. */
   async rebuild() {
-    const files = this.app.vault.getMarkdownFiles().filter((f) => !f.path.startsWith(".obsidian/"));
+    const files = this.app.vault.getMarkdownFiles().filter(
+      (f) => !f.path.startsWith(".obsidian/") && !f.path.startsWith(".trash/")
+    );
     const seen = /* @__PURE__ */ new Set();
     this.records.clear();
-    this.deletedRecords.clear();
     for (const file of files) {
       let rec;
       try {
         rec = await this.readThought(file);
       } catch (e) {
         console.error(`[Knowledge Brain] skipping unreadable note "${file.path}":`, e);
-        continue;
-      }
-      if (this.isTrashPath(file.path)) {
-        if (rec.deleted_at || rec.parents.length > 0 || Object.keys(rec.parentLabels).length > 0 || rec.source || rec.question_type) {
-          if (!seen.has(rec.id) && !this.deletedRecords.has(rec.id)) {
-            this.deletedRecords.set(rec.id, rec);
-          }
-        }
         continue;
       }
       if (seen.has(file.basename)) {
@@ -448,11 +433,7 @@ var KnowledgeBase = class {
         continue;
       }
       seen.add(file.basename);
-      if (rec.deleted_at) {
-        this.deletedRecords.set(rec.id, rec);
-      } else {
-        this.records.set(rec.id, rec);
-      }
+      this.records.set(rec.id, rec);
     }
     this.notify();
   }
@@ -478,7 +459,6 @@ var KnowledgeBase = class {
       status: str(fm.status),
       created_at: created,
       updated_at: str(fm.updated_at) || created,
-      deleted_at: fm.deleted_at ? String(fm.deleted_at) : null,
       parents: toStrArray(fm.parents),
       parentLabels: isPlainObject(fm.parent_labels) ? fm.parent_labels : {},
       extra
@@ -491,73 +471,13 @@ var KnowledgeBase = class {
       return;
     }
     if (this.isIgnoredPath(path)) {
-      if (this.isTrashPath(path)) {
-        await this.trackTrashed(file);
-      }
       return;
     }
     const rec = await this.readThought(file);
-    if (rec.deleted_at) {
-      const existing = this.records.get(rec.id);
-      if (existing) {
-        this.records.delete(rec.id);
-        this.deletedRecords.set(rec.id, { ...existing, deleted_at: rec.deleted_at });
-      } else {
-        this.deletedRecords.set(rec.id, rec);
-      }
-      return;
-    }
-    this.deletedRecords.delete(rec.id);
     this.records.set(rec.id, rec);
-  }
-  async trackTrashed(file) {
-    const id2 = file.basename;
-    const existing = this.records.get(id2);
-    if (existing) {
-      this.records.delete(id2);
-      this.deletedRecords.set(id2, {
-        ...existing,
-        path: file.path,
-        deleted_at: existing.deleted_at || now()
-      });
-      return;
-    }
-    if (!this.deletedRecords.has(id2)) {
-      const rec = await this.readThought(file);
-      if (rec.deleted_at) {
-        this.deletedRecords.set(id2, rec);
-      } else if (rec.parents.length > 0 || Object.keys(rec.parentLabels).length > 0 || rec.source || rec.question_type) {
-        this.deletedRecords.set(id2, { ...rec, deleted_at: now() });
-      }
-    }
   }
   async handleRename(file, oldPath) {
     const newPath = file.path;
-    const oldTrash = this.isTrashPath(oldPath);
-    const newTrash = this.isTrashPath(newPath);
-    if (newTrash) {
-      const id2 = file.basename;
-      const existing = this.records.get(id2);
-      if (existing) {
-        this.records.delete(id2);
-        this.deletedRecords.set(id2, {
-          ...existing,
-          path: newPath,
-          deleted_at: existing.deleted_at || now()
-        });
-        this.notify();
-      }
-      return;
-    }
-    if (oldTrash && !newTrash) {
-      const rec = await this.readThought(file);
-      this.deletedRecords.delete(rec.id);
-      if (!rec.deleted_at) {
-        this.records.set(rec.id, { ...rec, deleted_at: null });
-      }
-      this.notify();
-      return;
-    }
     const oldId = oldPath.replace(/\.md$/, "").split("/").pop() ?? oldPath;
     const newId = file.basename;
     if (oldId === newId) {
@@ -572,14 +492,6 @@ var KnowledgeBase = class {
       rec.updated_at = now();
       this.records.delete(oldId);
       this.records.set(newId, rec);
-    } else if (this.deletedRecords.has(oldId)) {
-      const rec = this.deletedRecords.get(oldId);
-      rec.id = newId;
-      rec.title = newId;
-      rec.path = newPath;
-      rec.updated_at = now();
-      this.deletedRecords.delete(oldId);
-      this.deletedRecords.set(newId, rec);
     }
     await this.rewriteParentRefs(oldId, newId);
     this.notify();
@@ -592,9 +504,7 @@ var KnowledgeBase = class {
   }
   /** Replace every reference to `oldId` with `newId` in parents / labels. */
   async rewriteParentRefs(oldId, newId) {
-    const touched = [...this.records.values(), ...this.deletedRecords.values()].filter(
-      (r) => r.parents.includes(oldId)
-    );
+    const touched = [...this.records.values()].filter((r) => r.parents.includes(oldId));
     for (const rec of touched) {
       rec.parents = rec.parents.map((p2) => p2 === oldId ? newId : p2);
       if (rec.parentLabels[oldId] !== void 0) {
@@ -614,9 +524,6 @@ var KnowledgeBase = class {
   }
   getRecord(id2) {
     return this.records.get(id2) ?? null;
-  }
-  getDeletedRecord(id2) {
-    return this.deletedRecords.get(id2) ?? null;
   }
   listThoughts() {
     return [...this.records.values()].map((r) => this.toThought(r));
@@ -645,14 +552,6 @@ var KnowledgeBase = class {
     }
     return [...seen].sort((a, b) => a.localeCompare(b));
   }
-  listDeleted() {
-    return [...this.deletedRecords.values()].map((r) => ({
-      id: r.id,
-      title: r.title,
-      content: r.content,
-      deleted_at: r.deleted_at ?? now()
-    })).sort((a, b) => a.deleted_at < b.deleted_at ? 1 : -1);
-  }
   toThought(rec, path = /* @__PURE__ */ new Set()) {
     if (path.has(rec.id)) {
       return {
@@ -665,7 +564,6 @@ var KnowledgeBase = class {
         status: rec.status,
         created_at: rec.created_at,
         updated_at: rec.updated_at,
-        deleted_at: rec.deleted_at,
         parents: [],
         children: [],
         siblings: []
@@ -700,7 +598,6 @@ var KnowledgeBase = class {
       status: rec.status,
       created_at: rec.created_at,
       updated_at: rec.updated_at,
-      deleted_at: rec.deleted_at,
       parents: parents2,
       children,
       siblings: siblings2
@@ -769,8 +666,7 @@ var KnowledgeBase = class {
       tags: r.tags,
       status: r.status,
       created_at: r.created_at,
-      updated_at: r.updated_at,
-      deleted_at: r.deleted_at
+      updated_at: r.updated_at
     }));
     const nodeIds = new Set(nodes3.map((n) => n.id));
     const edges3 = [];
@@ -802,11 +698,6 @@ var KnowledgeBase = class {
         throw new Error(`A thought titled "${title}" already exists`);
       }
     }
-    for (const id2 of this.deletedRecords.keys()) {
-      if (id2 !== excludeId && id2.trim().toLowerCase() === key) {
-        throw new Error(`A thought titled "${title}" already exists`);
-      }
-    }
     const file = this.app.vault.getAbstractFileByPath(`${this.folderPath(title)}.md`);
     if (file instanceof import_obsidian.TFile && !this.isIgnoredPath(file.path)) {
       throw new Error(`A thought titled "${title}" already exists`);
@@ -826,7 +717,6 @@ var KnowledgeBase = class {
       status: str(status),
       created_at: now(),
       updated_at: now(),
-      deleted_at: null,
       parents: [],
       parentLabels: {},
       extra: {}
@@ -931,67 +821,21 @@ var KnowledgeBase = class {
     if (cascade) {
       ids.push(...this.descendantsOf(id2));
     }
-    const ts = now();
     for (const cid of ids) {
       const rec = this.records.get(cid);
       if (!rec) {
         continue;
       }
       this.records.delete(cid);
-      rec.deleted_at = ts;
-      rec.updated_at = ts;
-      this.deletedRecords.set(cid, rec);
-      await this.writeRecord(rec);
       const file = this.app.vault.getAbstractFileByPath(rec.path);
       if (file instanceof import_obsidian.TFile) {
         try {
-          await this.app.vault.trash(file, false);
-          rec.path = (0, import_obsidian.normalizePath)(`.trash/${cid}.md`);
+          await this.app.vault.delete(file, true);
         } catch {
         }
       }
     }
     this.notify();
-    return ids;
-  }
-  async restoreThought(id2) {
-    const rec = this.deletedRecords.get(id2);
-    if (!rec) {
-      return;
-    }
-    rec.deleted_at = null;
-    rec.updated_at = now();
-    const target = `${this.folderPath(id2)}.md`;
-    if (this.app.vault.getAbstractFileByPath(target)) {
-      throw new Error(
-        `Cannot restore: a note titled "${id2}" already exists. Rename or purge it first.`
-      );
-    }
-    await this.app.vault.create(target, serializeThought(rec));
-    if (rec.path !== target) {
-      await this.app.vault.adapter.remove(rec.path).catch(() => {
-      });
-    }
-    rec.path = target;
-    this.records.set(id2, rec);
-    this.deletedRecords.delete(id2);
-    this.notify();
-  }
-  async purgeThought(id2) {
-    const rec = this.deletedRecords.get(id2);
-    if (!rec) {
-      return;
-    }
-    await this.app.vault.adapter.remove(rec.path).catch(() => {
-    });
-    this.deletedRecords.delete(id2);
-    this.notify();
-  }
-  async purgeTrash() {
-    const ids = [...this.deletedRecords.keys()];
-    for (const id2 of ids) {
-      await this.purgeThought(id2);
-    }
     return ids;
   }
   // ------------------------------------------------------------- stats
@@ -33211,7 +33055,7 @@ var GraphView = class extends import_obsidian6.ItemView {
     if (!thought) {
       return;
     }
-    if (window.confirm(`Delete "${thought.title}"? (moves the note to trash)`)) {
+    if (window.confirm(`Delete "${thought.title}"? This cannot be undone.`)) {
       await this.kb.deleteThought(id2, false);
     }
   }
@@ -33820,103 +33664,8 @@ ${thought.content}`;
   }
 };
 
-// src/recycleView.ts
-var import_obsidian9 = require("obsidian");
-var RECYCLE_VIEW_TYPE = "knowledge-brain-recycle";
-var RecycleBinView = class extends import_obsidian9.ItemView {
-  constructor(leaf, kb) {
-    super(leaf);
-    this.unsubscribe = () => {
-    };
-    this.kb = kb;
-  }
-  getViewType() {
-    return RECYCLE_VIEW_TYPE;
-  }
-  getDisplayText() {
-    return "Knowledge Brain Recycle Bin";
-  }
-  getIcon() {
-    return "trash";
-  }
-  async onOpen() {
-    this.container = this.contentEl.createDiv({ cls: "kb-recycle-view" });
-    this.unsubscribe = this.kb.onChange(() => this.render());
-    this.render();
-  }
-  async onClose() {
-    this.unsubscribe();
-    this.container.empty();
-  }
-  async openThought(id2) {
-    const rec = this.kb.getDeletedRecord(id2);
-    if (!rec) {
-      return;
-    }
-    const file = this.app.vault.getAbstractFileByPath(rec.path);
-    if (file instanceof import_obsidian9.TFile) {
-      await this.app.workspace.getLeaf(false).openFile(file);
-    }
-  }
-  render() {
-    this.container.empty();
-    const deleted = this.kb.listDeleted();
-    const header = this.container.createDiv();
-    header.createEl("h3", { text: "Recycle Bin" });
-    header.createEl("span", {
-      cls: "setting-item-description",
-      text: `${deleted.length} deleted thought${deleted.length === 1 ? "" : "s"}`
-    });
-    if (deleted.length === 0) {
-      this.container.createDiv({ cls: "setting-item-description", text: "Nothing here." });
-      return;
-    }
-    const purgeAll = this.container.createEl("button", {
-      text: "Purge all",
-      cls: "mod-warning"
-    });
-    purgeAll.onclick = () => void this.purgeAll();
-    for (const d of deleted) {
-      const row = this.container.createDiv({ cls: "kb-recycle-item" });
-      const title = row.createEl("span", { cls: "kb-recycle-title", text: d.title });
-      title.onclick = () => void this.openThought(d.id);
-      const meta3 = row.createEl("span", {
-        cls: "setting-item-description",
-        text: `deleted ${new Date(d.deleted_at).toLocaleString()}`
-      });
-      const actions = row.createDiv();
-      const restore = actions.createEl("button", { text: "Restore", cls: "mod-cta" });
-      restore.onclick = () => void this.restore(d.id);
-      const purge = actions.createEl("button", { text: "Purge", cls: "mod-warning" });
-      purge.onclick = () => void this.purgeOne(d.id);
-    }
-  }
-  async restore(id2) {
-    try {
-      await this.kb.restoreThought(id2);
-      new import_obsidian9.Notice("Restored.");
-    } catch (e) {
-      new import_obsidian9.Notice(`Knowledge Brain: ${e instanceof Error ? e.message : String(e)}`);
-    }
-  }
-  async purgeOne(id2) {
-    if (!window.confirm(`Permanently delete "${id2}"? This cannot be undone.`)) {
-      return;
-    }
-    await this.kb.purgeThought(id2);
-    new import_obsidian9.Notice("Purged.");
-  }
-  async purgeAll() {
-    if (!window.confirm(`Permanently delete all ${this.kb.listDeleted().length} trashed thoughts?`)) {
-      return;
-    }
-    await this.kb.purgeTrash();
-    new import_obsidian9.Notice("Trash purged.");
-  }
-};
-
 // src/followupsView.ts
-var import_obsidian10 = require("obsidian");
+var import_obsidian9 = require("obsidian");
 var FOLLOWUPS_VIEW_TYPE = "knowledge-brain-followups";
 var GROUP_LABELS2 = {
   scientific: "Scientific",
@@ -33926,7 +33675,7 @@ var GROUP_LABELS2 = {
   causal: "Causal",
   critical: "Critical"
 };
-var FollowUpsView = class extends import_obsidian10.ItemView {
+var FollowUpsView = class extends import_obsidian9.ItemView {
   constructor(leaf, kb, ai, getSettings, onAsk) {
     super(leaf);
     this.currentId = "";
@@ -34079,9 +33828,9 @@ var FollowUpsView = class extends import_obsidian10.ItemView {
 };
 
 // src/backlinksView.ts
-var import_obsidian11 = require("obsidian");
+var import_obsidian10 = require("obsidian");
 var BACKLINKS_VIEW_TYPE = "knowledge-brain-backlinks";
-var BacklinksView = class extends import_obsidian11.ItemView {
+var BacklinksView = class extends import_obsidian10.ItemView {
   constructor(leaf, kb) {
     super(leaf);
     this.currentId = "";
@@ -34165,16 +33914,16 @@ var BacklinksView = class extends import_obsidian11.ItemView {
       return;
     }
     const file = this.app.vault.getAbstractFileByPath(rec.path);
-    if (file instanceof import_obsidian11.TFile) {
+    if (file instanceof import_obsidian10.TFile) {
       void this.app.workspace.getLeaf(false).openFile(file);
     }
   }
 };
 
 // src/siblingsView.ts
-var import_obsidian12 = require("obsidian");
+var import_obsidian11 = require("obsidian");
 var SIBLINGS_VIEW_TYPE = "knowledge-brain-siblings";
-var SiblingsView = class extends import_obsidian12.ItemView {
+var SiblingsView = class extends import_obsidian11.ItemView {
   constructor(leaf, kb) {
     super(leaf);
     this.currentId = "";
@@ -34254,14 +34003,14 @@ var SiblingsView = class extends import_obsidian12.ItemView {
       return;
     }
     const file = this.app.vault.getAbstractFileByPath(rec.path);
-    if (file instanceof import_obsidian12.TFile) {
+    if (file instanceof import_obsidian11.TFile) {
       void this.app.workspace.getLeaf(false).openFile(file);
     }
   }
 };
 
 // src/sidebarPane.ts
-var import_obsidian13 = require("obsidian");
+var import_obsidian12 = require("obsidian");
 var COMBINED_SIDEBAR_VIEW_TYPE = "knowledge-brain-sidebar";
 var GROUP_LABELS3 = {
   scientific: "Scientific",
@@ -34271,7 +34020,7 @@ var GROUP_LABELS3 = {
   causal: "Causal",
   critical: "Critical"
 };
-var CombinedSidebarView = class extends import_obsidian13.ItemView {
+var CombinedSidebarView = class extends import_obsidian12.ItemView {
   constructor(leaf, kb, ai, getSettings, onAsk) {
     super(leaf);
     this.currentId = "";
@@ -34466,7 +34215,7 @@ var CombinedSidebarView = class extends import_obsidian13.ItemView {
       return;
     }
     const file = this.app.vault.getAbstractFileByPath(rec.path);
-    if (file instanceof import_obsidian13.TFile) {
+    if (file instanceof import_obsidian12.TFile) {
       void this.app.workspace.getLeaf(false).openFile(file);
     }
   }
@@ -34478,7 +34227,7 @@ function applyGraphIcon(el) {
   el.empty();
   el.innerHTML = GRAPH_SVG;
 }
-var KnowledgeBrainPlugin = class extends import_obsidian14.Plugin {
+var KnowledgeBrainPlugin = class extends import_obsidian13.Plugin {
   constructor() {
     super(...arguments);
     this.settings = { ...DEFAULT_SETTINGS };
@@ -34531,7 +34280,6 @@ var KnowledgeBrainPlugin = class extends import_obsidian14.Plugin {
       CHAT_VIEW_TYPE,
       (leaf) => new ChatView(leaf, this.kb, this.ai, () => this.settings)
     );
-    this.registerView(RECYCLE_VIEW_TYPE, (leaf) => new RecycleBinView(leaf, this.kb));
     this.registerView(BACKLINKS_VIEW_TYPE, (leaf) => new BacklinksView(leaf, this.kb));
     this.registerView(SIBLINGS_VIEW_TYPE, (leaf) => new SiblingsView(leaf, this.kb));
     this.registerView(
@@ -34579,11 +34327,6 @@ var KnowledgeBrainPlugin = class extends import_obsidian14.Plugin {
       id: "open-chat",
       name: "Open knowledge brain chat",
       callback: () => void this.activateView(CHAT_VIEW_TYPE)
-    });
-    this.addCommand({
-      id: "open-recycle-bin",
-      name: "Open knowledge brain recycle bin",
-      callback: () => void this.activateView(RECYCLE_VIEW_TYPE)
     });
     this.addCommand({
       id: "open-followups",
@@ -34679,7 +34422,7 @@ var KnowledgeBrainPlugin = class extends import_obsidian14.Plugin {
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       console.error("[Knowledge Brain] failed to load index:", e);
-      new import_obsidian14.Notice(`Knowledge Brain: failed to load notes \u2014 ${msg}`);
+      new import_obsidian13.Notice(`Knowledge Brain: failed to load notes \u2014 ${msg}`);
     }
   }
   onunload() {
@@ -34695,7 +34438,7 @@ var KnowledgeBrainPlugin = class extends import_obsidian14.Plugin {
       const leaf = existing[0] ?? this.app.workspace.getLeaf("tab");
       if (!leaf) {
         console.error(`[Knowledge Brain]   no leaf available for '${type}'`);
-        new import_obsidian14.Notice(`Knowledge Brain: could not get a leaf for '${type}'`);
+        new import_obsidian13.Notice(`Knowledge Brain: could not get a leaf for '${type}'`);
         return;
       }
       console.log(`[Knowledge Brain]   opening '${type}' in leaf`);
@@ -34704,7 +34447,7 @@ var KnowledgeBrainPlugin = class extends import_obsidian14.Plugin {
       console.log(`[Knowledge Brain]   '${type}' opened; leaves now:`, this.app.workspace.getLeavesOfType(type).length);
     } catch (e) {
       console.error(`[Knowledge Brain]   activateView('${type}') failed:`, e);
-      new import_obsidian14.Notice(
+      new import_obsidian13.Notice(
         `Knowledge Brain: failed to open '${type}' \u2014 ${e instanceof Error ? e.message : String(e)}`
       );
     }
@@ -34822,12 +34565,12 @@ var KnowledgeBrainPlugin = class extends import_obsidian14.Plugin {
   getActiveThought() {
     const file = this.app.workspace.getActiveFile();
     if (!file || file.extension !== "md") {
-      new import_obsidian14.Notice("Knowledge Brain: no active markdown note.");
+      new import_obsidian13.Notice("Knowledge Brain: no active markdown note.");
       return null;
     }
     const thought = this.kb.getThought(file.basename);
     if (!thought) {
-      new import_obsidian14.Notice("Knowledge Brain: the active note is not indexed as a thought.");
+      new import_obsidian13.Notice("Knowledge Brain: the active note is not indexed as a thought.");
       return null;
     }
     return thought;
@@ -34835,17 +34578,17 @@ var KnowledgeBrainPlugin = class extends import_obsidian14.Plugin {
   setContextFromActiveNote() {
     const file = this.app.workspace.getActiveFile();
     if (!file || file.extension !== "md") {
-      new import_obsidian14.Notice("Knowledge Brain: no active markdown note.");
+      new import_obsidian13.Notice("Knowledge Brain: no active markdown note.");
       return;
     }
     const thought = this.kb.getThought(file.basename);
     if (!thought) {
-      new import_obsidian14.Notice("Knowledge Brain: the active note is not indexed as a thought.");
+      new import_obsidian13.Notice("Knowledge Brain: the active note is not indexed as a thought.");
       return;
     }
     const chat = this.getChatView();
     if (!chat) {
-      new import_obsidian14.Notice("Knowledge Brain: open the chat view first.");
+      new import_obsidian13.Notice("Knowledge Brain: open the chat view first.");
       return;
     }
     chat.setContextThought(thought);
@@ -34871,7 +34614,7 @@ var KnowledgeBrainPlugin = class extends import_obsidian14.Plugin {
     this.syncSidebarPanes();
   }
 };
-var CreateThoughtModal = class extends import_obsidian14.Modal {
+var CreateThoughtModal = class extends import_obsidian13.Modal {
   constructor(app, kb) {
     super(app);
     this.title = "";
@@ -34884,28 +34627,28 @@ var CreateThoughtModal = class extends import_obsidian14.Modal {
   onOpen() {
     const { contentEl } = this;
     contentEl.createEl("h2", { text: "Create thought" });
-    new import_obsidian14.Setting(contentEl).setName("Title").addText(
+    new import_obsidian13.Setting(contentEl).setName("Title").addText(
       (text) => text.onChange((value) => {
         this.title = value.trim();
       })
     );
-    new import_obsidian14.Setting(contentEl).setName("Content").addTextArea((area) => {
+    new import_obsidian13.Setting(contentEl).setName("Content").addTextArea((area) => {
       area.inputEl.rows = 4;
       area.onChange((value) => {
         this.content = value;
       });
     });
-    new import_obsidian14.Setting(contentEl).setName("Parents").setDesc("Existing thought titles, comma-separated.").addText(
+    new import_obsidian13.Setting(contentEl).setName("Parents").setDesc("Existing thought titles, comma-separated.").addText(
       (text) => text.setPlaceholder("Parent One, Parent Two").onChange((value) => {
         this.parents = value;
       })
     );
-    new import_obsidian14.Setting(contentEl).setName("Tags").setDesc("Comma-separated tags.").addText(
+    new import_obsidian13.Setting(contentEl).setName("Tags").setDesc("Comma-separated tags.").addText(
       (text) => text.setPlaceholder("work, personal").onChange((value) => {
         this.tags = value;
       })
     );
-    new import_obsidian14.Setting(contentEl).setName("Status").addDropdown((dropdown) => {
+    new import_obsidian13.Setting(contentEl).setName("Status").addDropdown((dropdown) => {
       dropdown.addOption("", "\u2014 none \u2014");
       for (const s of THOUGHT_STATUSES) {
         dropdown.addOption(s, s);
@@ -34914,7 +34657,7 @@ var CreateThoughtModal = class extends import_obsidian14.Modal {
         this.status = value;
       });
     });
-    new import_obsidian14.Setting(contentEl).addButton(
+    new import_obsidian13.Setting(contentEl).addButton(
       (button) => button.setButtonText("Create").setCta().onClick(() => void this.submit())
     );
   }
@@ -34923,7 +34666,7 @@ var CreateThoughtModal = class extends import_obsidian14.Modal {
   }
   async submit() {
     if (!this.title) {
-      new import_obsidian14.Notice("Knowledge Brain: title is required.");
+      new import_obsidian13.Notice("Knowledge Brain: title is required.");
       return;
     }
     const parents2 = this.parents.split(",").map((p2) => p2.trim()).filter((p2) => p2.length > 0);
@@ -34937,18 +34680,18 @@ var CreateThoughtModal = class extends import_obsidian14.Modal {
         tags,
         this.status
       );
-      new import_obsidian14.Notice(`Created "${thought.title}"`);
+      new import_obsidian13.Notice(`Created "${thought.title}"`);
       this.close();
       const file = this.app.vault.getAbstractFileByPath(thought.title + ".md");
-      if (file instanceof import_obsidian14.TFile) {
+      if (file instanceof import_obsidian13.TFile) {
         await this.app.workspace.getLeaf(false).openFile(file);
       }
     } catch (e) {
-      new import_obsidian14.Notice(`Knowledge Brain: ${e instanceof Error ? e.message : String(e)}`);
+      new import_obsidian13.Notice(`Knowledge Brain: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
 };
-var SetStatusModal = class extends import_obsidian14.Modal {
+var SetStatusModal = class extends import_obsidian13.Modal {
   constructor(app, kb, thoughtId) {
     super(app);
     this.kb = kb;
@@ -34957,14 +34700,14 @@ var SetStatusModal = class extends import_obsidian14.Modal {
   onOpen() {
     const { contentEl } = this;
     contentEl.createEl("h3", { text: `Set status of "${this.thoughtId}"` });
-    new import_obsidian14.Setting(contentEl).addButton(
+    new import_obsidian13.Setting(contentEl).addButton(
       (button) => button.setButtonText("Idea").onClick(() => void this.apply("idea"))
     ).addButton(
       (button) => button.setButtonText("In progress").onClick(() => void this.apply("in progress"))
     ).addButton(
       (button) => button.setButtonText("Done").onClick(() => void this.apply("done"))
     );
-    new import_obsidian14.Setting(contentEl).addButton(
+    new import_obsidian13.Setting(contentEl).addButton(
       (button) => button.setButtonText("Clear status").onClick(() => void this.apply(""))
     );
   }
@@ -34976,11 +34719,11 @@ var SetStatusModal = class extends import_obsidian14.Modal {
       await this.kb.updateThought(this.thoughtId, { status });
       this.close();
     } catch (e) {
-      new import_obsidian14.Notice(`Knowledge Brain: ${e instanceof Error ? e.message : String(e)}`);
+      new import_obsidian13.Notice(`Knowledge Brain: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
 };
-var SetTagsModal = class extends import_obsidian14.Modal {
+var SetTagsModal = class extends import_obsidian13.Modal {
   constructor(app, kb, thoughtId) {
     super(app);
     this.kb = kb;
@@ -35003,7 +34746,7 @@ var SetTagsModal = class extends import_obsidian14.Modal {
         void this.apply();
       }
     };
-    new import_obsidian14.Setting(contentEl).setDesc("Comma-separated tags.").addButton(
+    new import_obsidian13.Setting(contentEl).setDesc("Comma-separated tags.").addButton(
       (button) => button.setButtonText("Apply").setCta().onClick(() => void this.apply())
     );
   }
@@ -35016,7 +34759,7 @@ var SetTagsModal = class extends import_obsidian14.Modal {
       await this.kb.updateThought(this.thoughtId, { tags });
       this.close();
     } catch (e) {
-      new import_obsidian14.Notice(`Knowledge Brain: ${e instanceof Error ? e.message : String(e)}`);
+      new import_obsidian13.Notice(`Knowledge Brain: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
 };
