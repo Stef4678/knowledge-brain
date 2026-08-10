@@ -127,7 +127,6 @@ Supported metadata includes:
 - `questiontype`
 - `tags`
 - `status`
-- `deletedat`
 - `createdat`
 - `updatedat`
 
