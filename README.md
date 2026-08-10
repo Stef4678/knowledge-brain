@@ -7,6 +7,7 @@ An Obsidian desktop plugin that turns Markdown notes into a connected knowledge 
 ## Features
 
 https://github.com/user-attachments/assets/9b032531-b89f-4e8f-bcb3-f0cb6ed3d4fe
+
 <img width="1916" height="1025" alt="Screenshot 2026-08-10 181644" src="https://github.com/user-attachments/assets/b07c076f-6862-4f6c-b583-b4cc2947d846" />
 <img width="1918" height="1023" alt="Screenshot 2026-08-10 180943" src="https://github.com/user-attachments/assets/0a3dddad-9e7a-437e-ab11-dca39c17e8ef" />
 <img width="1912" height="993" alt="Screenshot 2026-08-10 181001" src="https://github.com/user-attachments/assets/0f683764-186e-4bd8-8587-ae7570514f04" />
