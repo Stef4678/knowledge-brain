@@ -342,24 +342,6 @@
   border-top: 1px solid var(--background-modifier-border);
 }
 
-.kb-recycle-view {
-  padding: 12px;
-}
-
-.kb-recycle-view .kb-recycle-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 6px 0;
-  border-bottom: 1px solid var(--background-modifier-border);
-}
-
-.kb-recycle-view .kb-recycle-item .kb-recycle-title {
-  font-weight: 500;
-  cursor: pointer;
-}
-
 .kb-suggestions {
   margin-top: 6px;
 }
