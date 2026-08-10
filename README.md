@@ -1,196 +1,145 @@
 # Knowledge Brain
 
-An Obsidian desktop plugin that turns Markdown notes into a connected knowledge graph. Knowledge Brain organizes notes as **thoughts** in a directed acyclic graph (DAG), adds local full-text search, and provides AI-assisted chat and knowledge-management workflows.
+An [Obsidian](https://obsidian.md) plugin that turns your markdown notes into a connected **knowledge graph** — a directed acyclic graph (DAG) of *thoughts* — with a built-in **streaming AI chat** (DeepSeek / OpenAI / Gemini / Claude) that can suggest tags, statuses, links, follow-up questions, and even turn chat answers into new notes.
 
-> **Status:** Early release — version 0.2.0
+> Any markdown note in your vault is already a thought. The plugin reads standard YAML frontmatter, so your knowledge base stays plain, portable markdown.
+
+**Author:** [Kerekes Stefan](https://github.com/Stef4678) · **Version:** 0.3.0 · Desktop only
+
+---
 
 ## Features
 
-https://github.com/user-attachments/assets/9b032531-b89f-4e8f-bcb3-f0cb6ed3d4fe
+### 🧠 Thoughts as plain markdown
+- Every markdown note is a *thought*, indexed live from your vault (create, edit, rename, delete — the index follows automatically).
+- Thoughts link to each other through a `parents` list in frontmatter, forming a **directed acyclic graph** — the plugin validates links and refuses cycles, self-links, and duplicates.
+- Optional frontmatter metadata: `tags`, `status` (idea / in progress / done), `questiontype` (scientific, practical, comparative, historical, causal, critical), `source`, edge `parentlabels`.
+- Renaming a note automatically rewrites every parent reference that points at it.
 
-<img width="1916" height="1025" alt="Screenshot 2026-08-10 181644" src="https://github.com/user-attachments/assets/b07c076f-6862-4f6c-b583-b4cc2947d846" />
-<img width="1918" height="1023" alt="Screenshot 2026-08-10 180943" src="https://github.com/user-attachments/assets/0a3dddad-9e7a-437e-ab11-dca39c17e8ef" />
-<img width="1912" height="993" alt="Screenshot 2026-08-10 181001" src="https://github.com/user-attachments/assets/0f683764-186e-4bd8-8587-ae7570514f04" />
-<img width="1917" height="1024" alt="Screenshot 2026-08-10 181026" src="https://github.com/user-attachments/assets/e1ce110a-e5f4-4873-8cee-15bd5964a159" />
-<img width="1916" height="1022" alt="Screenshot 2026-08-10 181038" src="https://github.com/user-attachments/assets/ca1f4193-3c15-42c2-979b-42a89c8580d3" />
-<img width="1917" height="1025" alt="Screenshot 2026-08-10 181049" src="https://github.com/user-attachments/assets/60262e31-c4a4-46ff-b979-ff41baffba3e" />
-<img width="888" height="1022" alt="Screenshot 2026-08-10 181137" src="https://github.com/user-attachments/assets/9f047390-0e56-4376-8cde-54e141380b1b" />
-<img width="887" height="1021" alt="Screenshot 2026-08-10 181157" src="https://github.com/user-attachments/assets/8d4dbbb4-dd4b-49ca-8ba3-ab12b1453a69" />
+### 🕸️ Interactive graph view
+- Cytoscape.js-powered graph with **Breadth-first**, **Concentric**, or **CoSE** layouts, node size mapped to link degree, and arrows on edges.
+- Color-coded by status (idea / in progress / done) with an auto-generated legend.
+- Filter by **status** or **tag**, adjust **node spacing** with a slider (persisted in settings).
+- **Neighborhood view**: show only the notes within 1–3 hops of a thought, centered on the active note (or a thought you pick).
+- **Path highlighting**: pick two thoughts and the shortest connecting path is highlighted, with the rest dimmed.
+- Hover a node for a preview tooltip (title, status, type, tags, content); click to open the note.
+- Right-click a node for AI **tag suggestions**, AI **status suggestions**, or delete.
+- **Statistics** modal: totals, links, breakdown by thought type and follow-up groups.
+- **Check similarity**: finds near-duplicate thoughts locally (token-cosine over title + content — no API calls).
 
+### 💬 Streaming AI chat
+- Bring your own key for **DeepSeek, OpenAI (ChatGPT), Google Gemini, or Anthropic Claude** — pick a model from the list or type any custom model id.
+- **Streaming responses** with visible reasoning/thinking output for models that support it (DeepSeek thinking, OpenAI reasoning effort, Gemini thinking, Claude extended thinking).
+- **Context thought**: pin the active note (or a graph node) as chat context.
+- After each answer, get **follow-up suggestions** and **save the answer as a new thought** — the AI suggests the best existing parent(s) to file it under, or lets you create a new root.
+- Everything is copyable: individual messages, suggestions, the whole conversation.
 
-- Convert Markdown notes in an Obsidian vault into connected thoughts.
-- Link thoughts through parent-child relationships while preventing cycles.
-- Visualize the knowledge base as an interactive graph.
-- Chat with your notes using streaming AI responses.
-- Retrieve relevant notes with local BM25 search — no embeddings or vector database required.
-- Suggest suitable parent thoughts for new notes.
-- Generate cleaner, more specific note titles.
-- Suggest tags while reusing existing knowledge-base tags where appropriate.
-- Suggest workflow statuses: `idea`, `in progress`, or `done`.
-- Generate follow-up questions across multiple groups:
-  - Scientific
-  - Practical
-  - Comparative
-  - Historical
-  - Causal
-  - Critical
-- Browse backlinks, siblings, descendants, and related thoughts.
-- Search thoughts from a global search modal.
-- Store knowledge-graph metadata in Markdown frontmatter, keeping the data portable.
+### ❓ Automatic follow-up questions
+- Opening a note in the sidebar generates **follow-up questions** grouped by type (scientific, practical, comparative, historical, causal, critical) to deepen your thinking.
+- Choose which groups to generate and how many questions per group; pause/resume automatic generation; regenerate on demand.
+- Questions already answered elsewhere in the graph are marked as *answered in …*.
+- Click a follow-up to load it straight into the chat with the right context set.
 
-## Supported AI providers
+### 🗂️ Sidebar panes
+- **Backlinks** — thoughts that link to the active note (with edge labels).
+- **Siblings** — thoughts that share a parent with the active note.
+- **Follow-ups** — generated questions for the active note.
+- Optionally **combine all three into a single sidebar tab** (setting), or keep them as separate panes.
 
-Knowledge Brain can connect to the following providers through their compatible APIs:
+### 🔍 Local search & retrieval
+- **BM25 full-text search** over all thoughts (memoized index, rebuilt on change) with English **and Romanian** stopword handling.
+- Used both for the search modal and to retrieve relevant thoughts as context for AI operations — cheap and private, no embeddings API needed.
 
-- DeepSeek
-- OpenAI
-- Google Gemini
-- Anthropic Claude
+### 🤖 AI-assisted organization
+- **Suggest tags** and **suggest status** for a thought (toggleable in settings).
+- **Suggest parents** when saving a new thought — ranked best-first with reasons.
+- **Suggest titles** — 3–5 short, specific noun-phrase titles extracted from the content.
 
-You provide the API key and model in the plugin settings. The plugin supports streaming chat responses, provider-specific request formats, optional reasoning/thinking modes, and structured JSON responses for AI-assisted operations.
+## Commands
 
-## Requirements
+| Command | What it does |
+|---|---|
+| Open knowledge brain graph | Opens the graph view |
+| Open knowledge brain chat | Opens the chat view |
+| Open knowledge brain follow-up questions / backlinks / siblings | Opens the sidebar panes |
+| Set chat context to current note | Pins the active note as chat context |
+| Create new thought | Modal to create a titled thought with parents, tags, status |
+| Search knowledge brain thoughts | BM25 search modal |
+| Knowledge Brain: set status / tags of active thought | Edit metadata of the active note |
+| Knowledge Brain: generate tags / status for active thought (AI) | AI suggestions for the active note |
+| Knowledge Brain: reload index | Full vault rescan |
 
-- Obsidian 1.4.0 or newer.
-- Obsidian Desktop. Mobile platforms are not supported.
-- An API key from a supported AI provider for chat and AI-assisted features.
+There's also a **ribbon icon** and **status bar items** (`KB Graph`, `KB Chat`) for quick access.
 
-Local search, graph navigation, note management, backlinks, siblings, and other non-AI features do not require an API key.
+## Frontmatter format
 
-## Installation
-
-### Manual installation
-
-1. Download or build the plugin files.
-2. Create the following folder inside your vault:
-
-   ```text
-   <Vault>/.obsidian/plugins/knowledge-brain-obsidian/
-   ```
-
-3. Copy the plugin files into that folder:
-
-   ```text
-   main.js
-   manifest.json
-   styles.css
-   ```
-
-4. Restart Obsidian or reload installed plugins.
-5. Open **Settings → Community plugins**.
-6. Enable **Knowledge Brain**.
-
-The manifest identifies the plugin as `knowledge-brain-obsidian` and currently reports version `0.1.1`.
-
-### Development installation
-
-The supplied JavaScript file is an esbuild-generated bundle. For development, work from the plugin's source repository rather than editing `main.js` directly. After building the project, copy the generated plugin files into the vault's plugin directory and reload the plugin in Obsidian.
-
-## Configuration
-
-Open **Settings → Knowledge Brain** to configure:
-
-- AI provider.
-- API key.
-- Model identifier.
-- Temperature.
-- Thinking/reasoning mode where supported.
-- Default folder for newly created thoughts.
-- Graph node spacing.
-- Multi-word tag separator: hyphen or underscore.
-- AI tag suggestions.
-- AI status suggestions.
-- Number of follow-up questions per enabled group.
-- Enabled follow-up-question groups.
-- Separate or combined sidebar panes for follow-ups, siblings, and backlinks.
-
-The default folder can be left empty to create new thoughts at the vault root. A folder such as `Thoughts` can be configured to keep generated notes together.
-
-## How thoughts work
-
-A thought is a Markdown note with optional Knowledge Brain frontmatter. The note title is used as its thought identifier, and relationships are stored using parent identifiers.
-
-Example:
+A thought is just a markdown file. The plugin manages these frontmatter keys (anything else is preserved untouched):
 
 ```markdown
 ---
 parents:
-  - Retrieval-Augmented Generation
+  - Some Parent Thought
+parent_labels:
+  Some Parent Thought: contradicts
 tags:
   - knowledge-management
   - ai
-status: in progress
-questiontype: practical
-source: Personal research
-createdat: 2026-08-10T12:00:00.000Z
-updatedat: 2026-08-10T12:00:00.000Z
+status: idea
+question_type: causal
+source: https://example.com/article
+created_at: 2026-08-01T12:00:00.000Z
+updated_at: 2026-08-09T18:30:00.000Z
 ---
 
-A thought's content goes here.
+The body of the note is the thought's content — free-form markdown.
 ```
 
-Supported metadata includes:
+## Installation
 
-- `parents`
-- `parentlabels`
-- `source`
-- `questiontype`
-- `tags`
-- `status`
-- `createdat`
-- `updatedat`
+### Manual
+1. Download `main.js`, `manifest.json`, and `styles.css` from the [latest release](https://github.com/Stef4678/knowledge-brain-obsidian/releases).
+2. Create a folder `<your-vault>/.obsidian/plugins/knowledge-brain-obsidian/` and copy the three files into it.
+3. Restart Obsidian, then enable **Knowledge Brain** in *Settings → Community plugins*.
 
-Additional frontmatter is preserved when Knowledge Brain updates a note.
+### BRAT (beta testing)
+1. Install the [BRAT](https://github.com/TfTHacker/obsidian42-brat) plugin.
+2. Add this repository: `Stef4678/knowledge-brain-obsidian`.
 
-## Knowledge graph behavior
+## Setup
 
-Knowledge Brain treats thoughts as nodes and parent relationships as directed edges. It prevents self-links, duplicate parents, missing parents, and links that would create a cycle, keeping the graph acyclic.
+1. Open *Settings → Knowledge Brain*.
+2. Pick a **provider** (DeepSeek, OpenAI, Gemini, or Claude) and paste your **API key**.
+3. Choose a **model** (sensible defaults per provider, custom ids allowed) and tune **temperature** / **thinking mode**.
+4. Click **Test connection** to verify the key.
+5. (Optional) Set a **default folder** for new thoughts — the graph, similarity check, and sidebar panes focus on this folder.
 
-The graph can expose:
+> The graph, search, similarity, and all note management work **without an API key**. Only chat and AI-assisted suggestions need one.
 
-- Parents of the active thought.
-- Children and descendants.
-- Siblings sharing a parent.
-- Backlinks and related notes.
-- Labels attached to parent-child relationships.
+## Settings reference
 
-By default, the graph can include active Markdown notes across the vault. A configured default folder can also be used as a focused knowledge-base scope.
+| Setting | Default | Notes |
+|---|---|---|
+| Provider | DeepSeek | DeepSeek / OpenAI / Gemini / Claude |
+| API key | — | Required for chat & AI ops |
+| Model | provider default | Dropdown of known models or custom id |
+| Temperature | 1.0 | 0–2 (0–1 for Claude) |
+| Thinking mode | on | Only for models that support reasoning |
+| Default folder | vault root | Where new thoughts are created |
+| Graph node spacing | 3.0 | 0.6 (dense) – 6 (spread out) |
+| Tag word separator | `-` | `machine-learning` vs `machine_learning` |
+| AI tag / status suggestions | on | Hides the corresponding menu items when off |
+| Combined sidebar pane | off | One tab vs. three separate tabs |
+| Follow-up groups | all on | Per-type toggles + 1–5 questions per group |
 
-## Search and retrieval
+## Development
 
-Search is performed locally using a BM25-style full-text index over thought titles and content. The index is memoized and rebuilt when the knowledge base changes, so ordinary retrieval does not require embeddings, a remote search service, or a vector database.
+```bash
+npm install
+npm run dev      # esbuild watch mode
+npm run build    # production bundle
+```
 
-This makes Knowledge Brain suitable for private vaults and local-first workflows where predictable indexing and low operating cost are important.
-
-## AI-assisted workflows
-
-AI features use the currently configured provider and model to assist with knowledge organization:
-
-- **Parent suggestions:** proposes up to three existing thoughts that could serve as parents for a new thought.
-- **Title suggestions:** proposes short, specific titles based on note content.
-- **Tag suggestions:** proposes lowercase tags and favors tags already used in the vault.
-- **Status suggestions:** classifies a thought as an idea, in-progress work, or completed work.
-- **Follow-up questions:** generates questions designed to deepen, apply, compare, contextualize, explain, or critically examine a thought.
-- **Chat:** retrieves relevant thoughts locally and sends the selected context to the configured AI provider.
-
-AI-generated suggestions should be reviewed before being applied to your notes.
-
-## Privacy and data handling
-
-- Knowledge Brain indexes Markdown files locally inside your Obsidian vault.
-- Local BM25 search does not require embeddings or a cloud indexing service.
-- AI requests are sent to the provider configured in the plugin settings when you use AI features.
-- API keys should be treated as sensitive credentials and should not be committed to a repository or shared publicly.
-
-Review each provider's terms and privacy policy before sending vault content to its API.
-
-## Limitations
-
-- Desktop-only at the moment.
-- AI features require a compatible provider API key.
-- The current graph model is intentionally acyclic; links that would create cycles are rejected.
-- Thought identifiers are based on note titles, so duplicate titles are not allowed within the indexed knowledge base.
-- `main.js` is a generated bundle and is not the preferred place for source-level changes.
+Written in TypeScript, bundled with esbuild, graph rendering via [Cytoscape.js](https://js.cytoscape.org/). The plugin talks to AI providers directly (OpenAI-compatible chat completions, Gemini `generateContent`, Claude Messages API) with SSE streaming and non-streaming fallbacks.
 
 ## Roadmap ideas
 
@@ -198,13 +147,13 @@ Potential future improvements include:
 
 - **OpenAI-compatible endpoint support** — custom base URL + key, unlocking local models (LM Studio, Ollama) and alternative providers (Mistral, Groq, OpenRouter) with one code path
 - **Canvas / Excalidraw export** — render the thought graph as an Obsidian Canvas file for presentations and sharing
-- **Graph view improvements** — additional layouts (concentric, cose), depth-limited neighborhood view around the active note, path highlighting between two thoughts
 - **Chat with multiple thoughts as context** — pin several notes, not just one; auto-retrieve top-k relevant thoughts via BM25 as chat context (RAG-lite)
 - **Graph import/export** — JSON dump/restore of nodes, edges, and metadata for backups and migration (the logic already exists internally)
 
-## Author
+## Privacy
 
-Created by [Kerekes Stefan](https://github.com/Stef4678).
+- Notes never leave your vault except as explicit context in requests to **your chosen AI provider, using your own API key**.
+- Search, similarity, statistics, and the graph are computed entirely locally.
 
 ## License
 
