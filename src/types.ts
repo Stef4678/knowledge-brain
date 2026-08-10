@@ -90,3 +90,4 @@ export interface PluginSettings {
   /** Which follow-up question groups are enabled. */
   followupGroups: Record<QuestionType, boolean>;
 }
+

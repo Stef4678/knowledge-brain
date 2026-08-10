@@ -273,7 +273,7 @@ async function main(): Promise<void> {
     check("createThought sets status", t1.status === "in progress");
     const file1 = vault.files.get("T1.md") ?? "";
     check("tags written to file", /tags:\n\s*- x\n\s*- ['"]?y/.test(file1), file1);
-    check("status written to file", /status: ['"]?in progress/.test(file1), file1);
+    check("status written to file", /status: ["']?in progress/.test(file1), file1);
 
     const g = kb.getGraph();
     const node1 = g.nodes.find((n) => n.id === "T1")!;
