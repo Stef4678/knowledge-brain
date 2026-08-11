@@ -438,8 +438,12 @@ export class GraphView extends ItemView {
     clearPath.onclick = () => {
       this.pathSourceId = null;
       this.pathTargetId = null;
-      this.clearPathBtn?.remove();
-      this.clearPathBtn = null;
+      // Keep the button in the DOM (hidden) — showPathPicker re-shows it on the
+      // next highlight. Removing it here would orphan the next highlight with no
+      // way to clear it until the whole view re-renders.
+      if (this.clearPathBtn) {
+        this.clearPathBtn.style.display = "none";
+      }
       this.applyPathHighlight();
     };
     this.clearPathBtn = clearPath;
