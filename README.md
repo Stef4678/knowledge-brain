@@ -108,13 +108,13 @@ The body of the note is the thought's content — free-form markdown.
 ## Installation
 
 ### Manual
-1. Download `main.js`, `manifest.json`, and `styles.css` from the [latest release](https://github.com/Stef4678/knowledge-brain-obsidian/releases).
-2. Create a folder `<your-vault>/.obsidian/plugins/knowledge-brain-obsidian/` and copy the three files into it.
+1. Download `main.js`, `manifest.json`, and `styles.css` from the [latest release](https://github.com/Stef4678/knowledge-brain/releases).
+2. Create a folder `<your-vault>/.obsidian/plugins/knowledge-brain/` and copy the three files into it.
 3. Restart Obsidian, then enable **Knowledge Brain** in *Settings → Community plugins*.
 
 ### BRAT (beta testing)
 1. Install the [BRAT](https://github.com/TfTHacker/obsidian42-brat) plugin.
-2. Add this repository: `Stef4678/knowledge-brain-obsidian`.
+2. Add this repository: `Stef4678/knowledge-brain`.
 
 ## Setup
 
