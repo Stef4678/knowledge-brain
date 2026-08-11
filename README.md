@@ -18,10 +18,10 @@ https://github.com/user-attachments/assets/9b032531-b89f-4e8f-bcb3-f0cb6ed3d4fe
 <img width="1917" height="1024" alt="Screenshot 2026-08-10 181026" src="https://github.com/user-attachments/assets/e1ce110a-e5f4-4873-8cee-15bd5964a159" />
 <img width="1916" height="1022" alt="Screenshot 2026-08-10 181038" src="https://github.com/user-attachments/assets/ca1f4193-3c15-42c2-979b-42a89c8580d3" />
 <img width="1917" height="1025" alt="Screenshot 2026-08-10 181049" src="https://github.com/user-attachments/assets/60262e31-c4a4-46ff-b979-ff41baffba3e" />
-<img width="888" height="1022" alt="Screenshot 2026-08-10 181137" src="https://github.com/user-attachments/assets/9f047390-0e56-4376-8cde-54e141380b1b" />
-<img width="887" height="1021" alt="Screenshot 2026-08-10 181157" src="https://github.com/user-attachments/assets/8d4dbbb4-dd4b-49ca-8ba3-ab12b1453a69" />
 <img width="1916" height="1023" alt="Screenshot 2026-08-11 194810" src="https://github.com/user-attachments/assets/69fa11a8-d2c8-4af1-9c12-5abe9c5d9ba9" />
 <img width="1918" height="1022" alt="Screenshot 2026-08-11 194821" src="https://github.com/user-attachments/assets/3695feda-e95c-4967-afe8-a6c09899b1b3" />
+<img width="888" height="1022" alt="Screenshot 2026-08-10 181137" src="https://github.com/user-attachments/assets/9f047390-0e56-4376-8cde-54e141380b1b" />
+<img width="887" height="1021" alt="Screenshot 2026-08-10 181157" src="https://github.com/user-attachments/assets/8d4dbbb4-dd4b-49ca-8ba3-ab12b1453a69" />
 
 
 ### 🧠 Thoughts as plain markdown
