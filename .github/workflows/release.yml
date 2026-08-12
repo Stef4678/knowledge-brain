@@ -30,7 +30,9 @@ jobs:
       - name: Attest build provenance
         uses: actions/attest-build-provenance@v2
         with:
-          subject-path: main.js
+          subject-path: |
+            main.js
+            styles.css
 
       - name: Release
         uses: softprops/action-gh-release@v2
