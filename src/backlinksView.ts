@@ -30,7 +30,9 @@ export class BacklinksView extends ItemView {
   }
 
   getIcon(): string {
-    return "link";
+    // Not "link" — Obsidian's built-in Backlinks pane uses that exact icon, so
+    // a shared tab strip would show two indistinguishable link icons.
+    return "network";
   }
 
   async onOpen(): Promise<void> {
