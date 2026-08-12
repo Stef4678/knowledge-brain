@@ -1,8 +1,8 @@
 {
   "id": "knowledge-brain",
   "name": "Knowledge Brain",
-  "version": "0.3.2",
-  "minAppVersion": "1.4.0",
+  "version": "0.3.3",
+  "minAppVersion": "1.7.2",
   "description": "Turn markdown notes into a connected knowledge graph (DAG) with streaming AI chat. DeepSeek, OpenAI, Gemini, Claude — AI-suggested links, tags, statuses, and follow-up questions. Local BM25 search, no embeddings needed.",
   "author": "Kerekes Stefan",
   "authorUrl": "https://github.com/Stef4678",

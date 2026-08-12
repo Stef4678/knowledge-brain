@@ -303,7 +303,7 @@ export class GraphView extends ItemView {
     });
     void count;
 
-    const statusSelect = toolbar.createEl("select") as HTMLSelectElement;
+    const statusSelect = toolbar.createEl("select");
     statusSelect.addClass("kb-graph-filter");
     const statusOptions: Array<[string, string]> = [
       ["", "All statuses"],
@@ -319,7 +319,7 @@ export class GraphView extends ItemView {
       this.render();
     };
 
-    const tagSelect = toolbar.createEl("select") as HTMLSelectElement;
+    const tagSelect = toolbar.createEl("select");
     tagSelect.addClass("kb-graph-filter");
     tagSelect.createEl("option", { text: "All tags", attr: { value: "" } });
     for (const tag of this.kb.allTags()) {
@@ -348,10 +348,10 @@ export class GraphView extends ItemView {
     const slider = toolbar.createEl("input", {
       attr: { type: "range", min: "0.6", max: "6", step: "0.1" },
     });
-    (slider as HTMLInputElement).value = String(this.spacing);
+    slider.value = String(this.spacing);
     const val = toolbar.createSpan({ text: this.spacing.toFixed(1) });
     slider.oninput = () => {
-      const v = parseFloat((slider as HTMLInputElement).value) || this.spacing;
+      const v = parseFloat(slider.value) || this.spacing;
       this.spacing = v;
       val.setText(v.toFixed(1));
       this.setSpacing(v);
@@ -359,7 +359,7 @@ export class GraphView extends ItemView {
     };
 
     toolbar.createSpan({ text: "Layout:" });
-    const layoutSelect = toolbar.createEl("select") as HTMLSelectElement;
+    const layoutSelect = toolbar.createEl("select");
     layoutSelect.addClass("kb-graph-filter");
     const layoutOptions: Array<[LayoutName, string]> = [
       ["breadthfirst", "Breadth-first"],
@@ -379,7 +379,7 @@ export class GraphView extends ItemView {
     };
 
     toolbar.createSpan({ text: "Neighborhood:" });
-    const hoodSelect = toolbar.createEl("select") as HTMLSelectElement;
+    const hoodSelect = toolbar.createEl("select");
     hoodSelect.addClass("kb-graph-filter");
     const hoodOptions: Array<[string, string]> = [
       ["0", "Off"],
@@ -433,8 +433,10 @@ export class GraphView extends ItemView {
       text: "Clear path",
       attr: { title: "Remove the path highlight" },
     });
-    clearPath.style.display =
-      this.pathSourceId && this.pathTargetId ? "" : "none";
+    clearPath.toggleClass(
+      "kb-hidden",
+      !(this.pathSourceId && this.pathTargetId),
+    );
     clearPath.onclick = () => {
       this.pathSourceId = null;
       this.pathTargetId = null;
@@ -442,7 +444,7 @@ export class GraphView extends ItemView {
       // next highlight. Removing it here would orphan the next highlight with no
       // way to clear it until the whole view re-renders.
       if (this.clearPathBtn) {
-        this.clearPathBtn.style.display = "none";
+        this.clearPathBtn.addClass("kb-hidden");
       }
       this.applyPathHighlight();
     };
@@ -465,10 +467,14 @@ export class GraphView extends ItemView {
         scale: 2,
         bg: cssVar("--background-primary", "#ffffff"),
       });
-      const a = document.createElement("a");
-      a.href = pngUrl;
-      a.download = `knowledge-brain-graph-${new Date().toISOString().replace(/[:.]/g, "-")}.png`;
+      const a = this.container.createEl("a", {
+        attr: {
+          href: pngUrl,
+          download: `knowledge-brain-graph-${new Date().toISOString().replace(/[:.]/g, "-")}.png`,
+        },
+      });
       a.click();
+      a.remove();
     };
 
     const legend = this.container.createDiv({ cls: "kb-graph-legend" });
@@ -661,7 +667,7 @@ export class GraphView extends ItemView {
     this.applyPathHighlight();
 
     cy.on("tap", "node", (evt) => {
-      this.openThought(String(evt.target.id()));
+      this.openThought((evt.target as cytoscape.NodeSingular).id());
     });
 
     cy.on("mouseover", "node", (evt) => {
@@ -674,7 +680,10 @@ export class GraphView extends ItemView {
     });
 
     cy.on("cxttap", "node", (evt) => {
-      this.showNodeMenu(evt.originalEvent, String(evt.target.id()));
+      this.showNodeMenu(
+        evt.originalEvent,
+        (evt.target as cytoscape.NodeSingular).id(),
+      );
     });
   }
 
@@ -725,7 +734,7 @@ export class GraphView extends ItemView {
           levelWidth: () => 1,
           animate: false,
           fit,
-        } as cytoscape.LayoutOptions).run();
+        }).run();
         break;
       case "cose":
         this.cy.elements().layout({
@@ -736,7 +745,7 @@ export class GraphView extends ItemView {
           nodeDimensionsIncludeLabels: true,
           animate: false,
           fit: false,
-        } as cytoscape.LayoutOptions).run();
+        }).run();
         // This cytoscape build applies layout `spacingFactor` only through the
         // animated layoutPositions path, which animate:false skips — so the
         // slider silently did nothing on cose. Replicate the dilation here.
@@ -753,7 +762,7 @@ export class GraphView extends ItemView {
           spacingFactor: this.spacing,
           animate: false,
           fit,
-        } as cytoscape.LayoutOptions).run();
+        }).run();
     }
   }
 
@@ -908,7 +917,7 @@ export class GraphView extends ItemView {
       this.pathSourceId = source;
       this.pathTargetId = target;
       if (this.clearPathBtn) {
-        this.clearPathBtn.style.display = "";
+        this.clearPathBtn.removeClass("kb-hidden");
       }
       this.applyPathHighlight();
     }).open();
@@ -1089,7 +1098,7 @@ class PathPickerModal extends Modal {
     this.applyBtn = contentEl.createEl("button", {
       cls: "mod-cta",
       text: "Highlight",
-    }) as HTMLButtonElement;
+    });
     this.applyBtn.disabled = true;
     this.applyBtn.onclick = () => {
       if (this.source && this.target) {

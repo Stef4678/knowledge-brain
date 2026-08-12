@@ -195,7 +195,7 @@ export class ChatView extends ItemView {
         }
         const bubble = wrap.createDiv({ cls: "kb-chat-bubble" });
         if (ex.status === "streaming") {
-          bubble.createEl("span", { text: ex.content || "▋" });
+          bubble.createSpan({ text: ex.content || "▋" });
           this.liveWrap = wrap;
           this.liveBubble = bubble;
         } else if (ex.status === "error") {

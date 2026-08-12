@@ -5,6 +5,11 @@
  */
 import { load as yamlLoad, dump as yamlDump } from "js-yaml";
 
+// The plugin uses `window.setTimeout` etc. (per Obsidian's lint rules), but the
+// smoke tests run in Node where `window` does not exist. Point it at the global
+// scope so the tests exercise the same code paths.
+(globalThis as Record<string, unknown>).window = globalThis;
+
 export type App = unknown;
 export type EventRef = { id: number };
 export type TAbstractFile = TFile | { path: string };

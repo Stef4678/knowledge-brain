@@ -93,11 +93,15 @@ export function hasApiKey(settings: PluginSettings): boolean {
 export function errorFromResponse(status: number, text: string): KbError {
   let detail = "";
   try {
-    const parsed = JSON.parse(text);
-    if (parsed && typeof parsed.error === "object" && parsed.error !== null) {
-      detail = String((parsed.error as Record<string, unknown>).message ?? "");
-    } else if (typeof parsed === "object") {
-      detail = JSON.stringify(parsed);
+    const parsed: unknown = JSON.parse(text);
+    if (parsed && typeof parsed === "object") {
+      const err = (parsed as Record<string, unknown>).error;
+      if (typeof err === "object" && err !== null) {
+        const msg = (err as Record<string, unknown>).message;
+        detail = typeof msg === "string" ? msg : "";
+      } else {
+        detail = JSON.stringify(parsed);
+      }
     }
   } catch {
     detail = text;
@@ -132,7 +136,8 @@ export class KnowledgeBrainSettingsTab extends PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
 
-    containerEl.createEl("h2", { text: "Knowledge Brain", cls: "kb-settings-title" });
+    const title = new Setting(containerEl).setName("Core").setHeading();
+    title.nameEl.addClass("kb-settings-title");
     containerEl.createEl("p", {
       text: "Knowledge Brain turns your markdown notes into a connected knowledge graph. Notes become “thoughts” linked through `parents:` frontmatter and visualized in an interactive graph. Chat with your notes, get AI-assisted tag and status suggestions, and receive follow-up questions to deepen your thinking.",
       cls: "setting-item-description",
@@ -159,10 +164,10 @@ export class KnowledgeBrainSettingsTab extends PluginSettingTab {
               model: PROVIDER_DEFAULT_MODELS[provider],
               temperature,
             };
-            await this.onChange(this.settings);
+            this.onChange(this.settings);
           } else if (temperature !== this.settings.temperature) {
             this.settings = { ...this.settings, provider, temperature };
-            await this.onChange(this.settings);
+            this.onChange(this.settings);
           } else {
             this.set("provider", provider);
           }
@@ -219,7 +224,6 @@ export class KnowledgeBrainSettingsTab extends PluginSettingTab {
         slider
           .setLimits(0, max, 0.1)
           .setValue(value)
-          .setDynamicTooltip()
           .onChange(async (v) => {
             this.set("temperature", v);
           });
@@ -262,7 +266,6 @@ export class KnowledgeBrainSettingsTab extends PluginSettingTab {
         slider
           .setLimits(0.6, 6, 0.1)
           .setValue(this.settings.graphSpacing)
-          .setDynamicTooltip()
           .onChange(async (value) => {
             this.set("graphSpacing", value);
           }),
@@ -310,7 +313,7 @@ export class KnowledgeBrainSettingsTab extends PluginSettingTab {
           }),
       );
 
-    containerEl.createEl("h3", { text: "Follow-up questions" });
+    new Setting(containerEl).setName("Follow-up questions").setHeading();
     containerEl.createEl("p", {
       cls: "setting-item-description",
       text: "Choose which question groups are generated for a thought, and how many questions each enabled group gets.",

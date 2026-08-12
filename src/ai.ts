@@ -31,6 +31,11 @@ export type FollowupGroup = QuestionType;
 
 export const FOLLOWUP_GROUPS: FollowupGroup[] = [...QUESTION_TYPES];
 
+/** Coerce an unknown JSON value to a string, defaulting to "" for non-strings. */
+function asString(v: unknown): string {
+  return typeof v === "string" ? v : "";
+}
+
 export class AiService {
   private kb: KnowledgeBase;
   private index: Bm25Index | null = null;
@@ -128,7 +133,9 @@ export class AiService {
     ];
 
     const result = await this.json(messages, settings, 0.4);
-    const raw = Array.isArray(result.suggestions) ? result.suggestions : [];
+    const raw: unknown[] = Array.isArray(result.suggestions)
+      ? result.suggestions
+      : [];
     const existingIds = new Set(thoughts.map((t) => t.id));
     const titles = new Map(thoughts.map((t) => [t.id, t.title]));
 
@@ -138,7 +145,7 @@ export class AiService {
         continue;
       }
       const pid = (it as Record<string, unknown>).parent_id;
-      const reason = String((it as Record<string, unknown>).reason ?? "").trim();
+      const reason = asString((it as Record<string, unknown>).reason).trim();
       if (typeof pid === "string" && existingIds.has(pid)) {
         items.push({ parent_id: pid, reason });
       }
@@ -158,7 +165,7 @@ export class AiService {
         {
           parent_id: null,
           parent_title: null,
-          reason: String((first as Record<string, unknown>).reason ?? "").trim(),
+          reason: asString((first as Record<string, unknown>).reason).trim(),
         },
       ];
     }
@@ -190,16 +197,18 @@ export class AiService {
       { role: "user", content: `Current title: ${title || "(none)"}\n\nContent:\n${content}` },
     ];
     const result = await this.json(messages, settings, 0.4);
-    const raw = Array.isArray(result.suggestions) ? result.suggestions : [];
+    const raw: unknown[] = Array.isArray(result.suggestions)
+      ? result.suggestions
+      : [];
     const clean: TitleSuggestion[] = [];
     for (const item of raw) {
       if (!item || typeof item !== "object") {
         continue;
       }
       const t = sanitizeTitle(
-        String((item as Record<string, unknown>).title ?? "").trim(),
+        asString((item as Record<string, unknown>).title).trim(),
       );
-      const reason = String((item as Record<string, unknown>).reason ?? "").trim();
+      const reason = asString((item as Record<string, unknown>).reason).trim();
       if (t && !clean.some((c) => c.title === t)) {
         clean.push({ title: t, reason });
       }
@@ -279,17 +288,17 @@ export class AiService {
       out[key] = [];
     }
     for (const key of groups) {
-      const raw = Array.isArray(result[key]) ? result[key] : [];
+      const raw: unknown[] = Array.isArray(result[key]) ? result[key] : [];
       const items: FollowupQuestion[] = [];
       const seenQ = new Set<string>();
       for (const item of raw) {
         let q = "";
         let cid: unknown = null;
         if (item && typeof item === "object") {
-          q = String((item as Record<string, unknown>).q ?? "").trim();
+          q = asString((item as Record<string, unknown>).q).trim();
           cid = (item as Record<string, unknown>).covered_id;
         } else {
-          q = String(item).trim();
+          q = asString(item).trim();
         }
         if (!q || seenQ.has(q.toLowerCase())) {
           continue;
@@ -334,7 +343,7 @@ export class AiService {
           "short, lowercase tags (no # prefix) that describe the CONTENT, not " +
           "the title alone. Prefer reusing tags already used in the knowledge " +
           "base when they fit, so the taxonomy stays stable. Multi-word tags " +
-          `must be joined with ${sepWord}, e.g. \"${example}\", never a ` +
+          `must be joined with ${sepWord}, e.g. "${example}", never a ` +
           "space. Use only plain tag names — no markdown, no strikethrough. " +
           "Return JSON exactly of the form: {\"tags\": [\"...\", \"...\"]}",
       },
@@ -346,10 +355,10 @@ export class AiService {
       },
     ];
     const result = await this.json(messages, settings, 0.4);
-    const raw = Array.isArray(result.tags) ? result.tags : [];
+    const raw: unknown[] = Array.isArray(result.tags) ? result.tags : [];
     const clean: string[] = [];
     for (const item of raw) {
-      const tag = String(item ?? "")
+      const tag = asString(item)
         .trim()
         .toLowerCase()
         .replace(/^#+/, "")
@@ -391,11 +400,11 @@ export class AiService {
       },
     ];
     const result = await this.json(messages, settings, 0.3);
-    const status = String(result.status ?? "").trim().toLowerCase();
+    const status = asString(result.status).trim().toLowerCase();
     const valid = new Set<string>(THOUGHT_STATUSES);
     return {
       status: valid.has(status) ? status : "",
-      reason: String(result.reason ?? "").trim(),
+      reason: asString(result.reason).trim(),
     };
   }
 }

@@ -214,7 +214,7 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
       },
       (e) => {
         window.clearTimeout(timer);
-        reject(e);
+        reject(e instanceof Error ? e : new Error(String(e)));
       },
     );
   });
@@ -386,12 +386,12 @@ function getNodeModules():
   | null {
   if (nodeModules === undefined) {
     try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      // Obsidian desktop exposes Node's `require` in the plugin scope. Route
+      // through a typed alias so the module values are typed, not `any`.
+      const nodeRequire = require as unknown as (id: string) => unknown;
       nodeModules = {
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
-        http: require("http") as typeof import("http"),
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
-        https: require("https") as typeof import("https"),
+        http: nodeRequire("http") as typeof import("http"),
+        https: nodeRequire("https") as typeof import("https"),
       };
     } catch {
       nodeModules = null;
@@ -435,7 +435,7 @@ export async function nodeStreamChat(
   await new Promise<void>((resolve, reject) => {
     let req: ClientRequest;
     let settled = false;
-    const timer = globalThis.setTimeout(() => {
+    const timer = window.setTimeout(() => {
       if (!settled) {
         settled = true;
         req.destroy();
@@ -449,7 +449,7 @@ export async function nodeStreamChat(
         return;
       }
       settled = true;
-      globalThis.clearTimeout(timer);
+      window.clearTimeout(timer);
       fn();
     };
     req = request(
@@ -488,10 +488,14 @@ export async function nodeStreamChat(
           );
         });
         res.on("end", () => finish(resolve));
-        res.on("error", (e) => finish(() => reject(e)));
+        res.on("error", (e) =>
+          finish(() => reject(e instanceof Error ? e : new Error(String(e)))),
+        );
       },
     );
-    req.on("error", (e) => finish(() => reject(e)));
+    req.on("error", (e) =>
+      finish(() => reject(e instanceof Error ? e : new Error(String(e)))),
+    );
     req.write(payload);
     req.end();
   });
@@ -510,7 +514,7 @@ async function fetchStreamChat(
   timeoutMs: number,
 ): Promise<void> {
   const controller = new AbortController();
-  const timer = globalThis.setTimeout(() => controller.abort(), timeoutMs);
+  const timer = window.setTimeout(() => controller.abort(), timeoutMs);
   try {
     const resp = await fetch(url, {
       method: "POST",
@@ -551,7 +555,7 @@ async function fetchStreamChat(
       }
     }
   } finally {
-    globalThis.clearTimeout(timer);
+    window.clearTimeout(timer);
   }
 }
 
@@ -616,6 +620,11 @@ export async function streamChat(
   onEvent({ type: "done" });
 }
 
+/** Coerce an unknown JSON value to a string, defaulting to "" for non-strings. */
+function asString(v: unknown): string {
+  return typeof v === "string" ? v : "";
+}
+
 /** Extract the plain text of a non-streaming response for the provider. */
 function extractResponseText(provider: Provider, text: string): string {
   let parsed: Record<string, unknown>;
@@ -628,7 +637,7 @@ function extractResponseText(provider: Provider, text: string): string {
     const blocks = Array.isArray(parsed.content) ? (parsed.content as Array<Record<string, unknown>>) : [];
     return blocks
       .filter((b) => b.type === "text")
-      .map((b) => String(b.text ?? ""))
+      .map((b) => asString(b.text))
       .join("");
   }
   if (provider === "gemini") {
@@ -637,7 +646,7 @@ function extractResponseText(provider: Provider, text: string): string {
       : [];
     const parts = (candidates[0]?.content as Record<string, unknown> | undefined)?.parts;
     return Array.isArray(parts)
-      ? parts.map((p) => String((p as Record<string, unknown>).text ?? "")).join("")
+      ? parts.map((p) => asString((p as Record<string, unknown>).text)).join("")
       : "";
   }
   const content = (parsed.choices as Array<{ message?: { content?: unknown } }> | undefined)
@@ -687,7 +696,7 @@ export function parseJsonContent(content: string): Record<string, unknown> | nul
   }
   for (const candidate of candidates) {
     try {
-      const obj = JSON.parse(candidate);
+      const obj: unknown = JSON.parse(candidate);
       if (obj && typeof obj === "object" && !Array.isArray(obj)) {
         return obj as Record<string, unknown>;
       }

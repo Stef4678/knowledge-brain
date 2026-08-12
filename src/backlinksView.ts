@@ -40,7 +40,7 @@ export class BacklinksView extends ItemView {
     );
     this.unsubscribe = this.kb.onChange(() => void this.maybeRefresh());
     this.register(() => this.unsubscribe());
-    await this.maybeRefresh();
+    this.maybeRefresh();
   }
 
   async onClose(): Promise<void> {

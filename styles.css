@@ -1,5 +1,9 @@
 /* Knowledge Brain plugin styles */
 
+.kb-hidden {
+  display: none;
+}
+
 /* Scope under Obsidian's settings container so specificity (not !important)
    overrides the default title styling. */
 .workspace-settings .kb-settings-title,

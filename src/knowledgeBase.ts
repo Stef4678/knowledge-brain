@@ -72,7 +72,8 @@ function toTagArray(v: unknown, separator: "-" | "_"): string[] {
   const out: string[] = [];
   const seen = new Set<string>();
   for (const item of raw) {
-    for (const part of String(item ?? "").split(",")) {
+    const itemText = typeof item === "string" ? item : "";
+    for (const part of itemText.split(",")) {
       const tag = part
         .trim()
         .toLowerCase()
@@ -121,7 +122,7 @@ function splitFrontmatter(content: string): {
   const block = content.slice(3, end);
   let fm: Record<string, unknown> = {};
   try {
-    const parsed = parseYaml(block);
+    const parsed: unknown = parseYaml(block);
     if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
       fm = parsed as Record<string, unknown>;
     }
@@ -278,8 +279,9 @@ export class KnowledgeBase {
   }
 
   private isIgnoredPath(path: string): boolean {
+    const configDir = this.app.vault.configDir;
     return (
-      path.startsWith(".obsidian/") ||
+      path.startsWith(`${configDir}/`) ||
       path.startsWith(".trash/") ||
       path === ".trash"
     );
@@ -308,7 +310,7 @@ export class KnowledgeBase {
       if (!(file instanceof TFile) || file.extension !== "md") {
         return;
       }
-      this.handleDelete(file);
+      void this.handleDelete(file);
     };
 
     const refs: EventRef[] = [
@@ -343,10 +345,12 @@ export class KnowledgeBase {
 
   /** Full rescan of the vault. Used on startup and as a safety net. */
   async rebuild(): Promise<void> {
+    const configDir = this.app.vault.configDir;
     const files = this.app.vault
       .getMarkdownFiles()
       .filter(
-        (f) => !f.path.startsWith(".obsidian/") && !f.path.startsWith(".trash/"),
+        (f) =>
+          !f.path.startsWith(`${configDir}/`) && !f.path.startsWith(".trash/"),
       );
     const seen = new Set<string>();
     this.records.clear();

@@ -1,26 +1,61 @@
 import { App, Modal, Notice, Plugin, Setting, TFile } from "obsidian";
 
-/**
- * Hand-drawn graph glyph. Injected directly so the ribbon icon is visible even
- * when a Lucide icon name fails to resolve in the host Obsidian build.
- */
-const GRAPH_SVG =
-  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
-  'stroke-linecap="round" stroke-linejoin="round" width="100%" height="100%">' +
-  '<circle cx="5" cy="12" r="2.4" fill="currentColor" stroke="none"/>' +
-  '<circle cx="12" cy="4.5" r="2.4" fill="currentColor" stroke="none"/>' +
-  '<circle cx="12" cy="19.5" r="2.4" fill="currentColor" stroke="none"/>' +
-  '<circle cx="19" cy="12" r="2.4" fill="currentColor" stroke="none"/>' +
-  '<line x1="7.4" y1="11" x2="9.6" y2="6.9"/>' +
-  '<line x1="7.4" y1="13" x2="9.6" y2="17.1"/>' +
-  '<line x1="14.4" y1="6.9" x2="16.6" y2="11"/>' +
-  '<line x1="14.4" y1="17.1" x2="16.6" y2="13"/>' +
-  "</svg>";
+const SVG_NS = "http://www.w3.org/2000/svg";
 
-/** Replace whatever icon renderer put in `el` with the hand-drawn graph glyph. */
+/** Build an SVG child element with the given attributes. */
+function svgEl<K extends keyof SVGElementTagNameMap>(
+  tag: K,
+  attrs: Record<string, string>,
+): SVGElementTagNameMap[K] {
+  const el = document.createElementNS(SVG_NS, tag);
+  for (const [key, value] of Object.entries(attrs)) {
+    el.setAttribute(key, value);
+  }
+  return el;
+}
+
+/**
+ * Hand-drawn graph glyph. Drawn via DOM so the ribbon icon is visible even when
+ * a Lucide icon name fails to resolve in the host Obsidian build.
+ */
 function applyGraphIcon(el: HTMLElement): void {
   el.empty();
-  el.innerHTML = GRAPH_SVG;
+  const svg = svgEl("svg", {
+    viewBox: "0 0 24 24",
+    fill: "none",
+    stroke: "currentColor",
+    "stroke-width": "2",
+    "stroke-linecap": "round",
+    "stroke-linejoin": "round",
+    width: "100%",
+    height: "100%",
+  });
+  const node = (cx: number, cy: number): SVGCircleElement =>
+    svgEl("circle", {
+      cx: String(cx),
+      cy: String(cy),
+      r: "2.4",
+      fill: "currentColor",
+      stroke: "none",
+    });
+  const link = (x1: number, y1: number, x2: number, y2: number): SVGLineElement =>
+    svgEl("line", {
+      x1: String(x1),
+      y1: String(y1),
+      x2: String(x2),
+      y2: String(y2),
+    });
+  svg.append(
+    node(5, 12),
+    node(12, 4.5),
+    node(12, 19.5),
+    node(19, 12),
+    link(7.4, 11, 9.6, 6.9),
+    link(7.4, 13, 9.6, 17.1),
+    link(14.4, 6.9, 16.6, 11),
+    link(14.4, 17.1, 16.6, 13),
+  );
+  el.append(svg);
 }
 
 import { KnowledgeBase } from "./knowledgeBase";
@@ -52,9 +87,7 @@ export default class KnowledgeBrainPlugin extends Plugin {
   settings: PluginSettings = { ...DEFAULT_SETTINGS };
 
   async onload(): Promise<void> {
-    console.log("[Knowledge Brain] onload: starting");
     await this.loadSettings();
-    console.log("[Knowledge Brain] onload: settings loaded");
 
     this.kb = new KnowledgeBase(this.app);
     this.ai = new AiService(this.kb);
@@ -66,21 +99,21 @@ export default class KnowledgeBrainPlugin extends Plugin {
         this.app,
         this,
         this.settings,
-        async (next) => {
+        (next) => {
           const paneChanged =
             next.combineSidebarPanes !== this.settings.combineSidebarPanes;
           this.settings = next;
           this.kb.setDefaultFolder(next.defaultFolder);
           this.kb.setTagSeparator(next.tagSeparator);
-          await this.saveSettings();
-          if (paneChanged) {
-            this.syncSidebarPanes();
-          }
+          void this.saveSettings().then(() => {
+            if (paneChanged) {
+              this.syncSidebarPanes();
+            }
+          });
         },
         async () => this.resetSettings(),
       ),
     );
-    console.log("[Knowledge Brain] onload: settings tab registered");
 
     // Register everything the user can see/interact with FIRST, before any
     // async data work. A failure while loading notes must not leave the plugin
@@ -156,27 +189,27 @@ export default class KnowledgeBrainPlugin extends Plugin {
 
     this.addCommand({
       id: "open-graph",
-      name: "Open knowledge brain graph",
+      name: "Open graph",
       callback: () => void this.activateView(GRAPH_VIEW_TYPE),
     });
     this.addCommand({
       id: "open-chat",
-      name: "Open knowledge brain chat",
+      name: "Open chat",
       callback: () => void this.activateView(CHAT_VIEW_TYPE),
     });
     this.addCommand({
       id: "open-followups",
-      name: "Open knowledge brain follow-up questions",
+      name: "Open follow-up questions",
       callback: () => void this.openFollowupsPane(true),
     });
     this.addCommand({
       id: "open-backlinks",
-      name: "Open knowledge brain backlinks",
+      name: "Open backlinks",
       callback: () => void this.openBacklinksPane(true),
     });
     this.addCommand({
       id: "open-siblings",
-      name: "Open knowledge brain siblings",
+      name: "Open siblings",
       callback: () => void this.openSiblingsPane(true),
     });
     this.addCommand({
@@ -194,12 +227,12 @@ export default class KnowledgeBrainPlugin extends Plugin {
     });
     this.addCommand({
       id: "search-thoughts",
-      name: "Search knowledge brain thoughts",
+      name: "Search thoughts",
       callback: () => new ThoughtSearchModal(this.app, this.kb).open(),
     });
     this.addCommand({
       id: "set-thought-status",
-      name: "Knowledge Brain: set status of active thought",
+      name: "Set status of active thought",
       callback: () => {
         const thought = this.getActiveThought();
         if (thought) {
@@ -209,7 +242,7 @@ export default class KnowledgeBrainPlugin extends Plugin {
     });
     this.addCommand({
       id: "set-thought-tags",
-      name: "Knowledge Brain: set tags of active thought",
+      name: "Set tags of active thought",
       callback: () => {
         const thought = this.getActiveThought();
         if (thought) {
@@ -219,7 +252,7 @@ export default class KnowledgeBrainPlugin extends Plugin {
     });
     this.addCommand({
       id: "generate-thought-tags",
-      name: "Knowledge Brain: generate tags for active thought (AI)",
+      name: "Generate tags for active thought (AI)",
       callback: () => {
         const thought = this.getActiveThought();
         if (thought) {
@@ -229,7 +262,7 @@ export default class KnowledgeBrainPlugin extends Plugin {
     });
     this.addCommand({
       id: "generate-thought-status",
-      name: "Knowledge Brain: generate status for active thought (AI)",
+      name: "Generate status for active thought (AI)",
       callback: () => {
         const thought = this.getActiveThought();
         if (thought) {
@@ -239,10 +272,9 @@ export default class KnowledgeBrainPlugin extends Plugin {
     });
     this.addCommand({
       id: "reload-index",
-      name: "Knowledge Brain: reload index",
+      name: "Reload index",
       callback: () => void this.init(),
     });
-    console.log("[Knowledge Brain] onload: views, ribbon, commands registered");
 
     // Load the note index without blocking registration. Failures are surfaced
     // as a Notice + console error instead of silently killing startup.
@@ -256,14 +288,9 @@ export default class KnowledgeBrainPlugin extends Plugin {
 
   private async init(): Promise<void> {
     try {
-      console.log("[Knowledge Brain] loading index...");
       await this.kb.load();
-      console.log(
-        `[Knowledge Brain] index loaded: ${this.kb.listThoughts().length} thoughts`,
-      );
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      console.error("[Knowledge Brain] failed to load index:", e);
       new Notice(`Knowledge Brain: failed to load notes — ${msg}`);
     }
   }
@@ -275,26 +302,18 @@ export default class KnowledgeBrainPlugin extends Plugin {
   // ------------------------------------------------------------- views
 
   private async activateView(type: string): Promise<void> {
-    console.log(`[Knowledge Brain] activateView('${type}') called`);
     try {
       const existing = this.app.workspace.getLeavesOfType(type);
-      console.log(
-        `[Knowledge Brain]   existing leaves of '${type}': ${existing.length}`,
-      );
       // 'tab' always opens a dedicated, focused tab in the main area. getLeaf(false)
       // can drop the view into a sidebar panel or background tab the user misses.
       const leaf = existing[0] ?? this.app.workspace.getLeaf("tab");
       if (!leaf) {
-        console.error(`[Knowledge Brain]   no leaf available for '${type}'`);
         new Notice(`Knowledge Brain: could not get a leaf for '${type}'`);
         return;
       }
-      console.log(`[Knowledge Brain]   opening '${type}' in leaf`);
       await leaf.setViewState({ type, active: true });
-      this.app.workspace.revealLeaf(leaf);
-      console.log(`[Knowledge Brain]   '${type}' opened; leaves now:`, this.app.workspace.getLeavesOfType(type).length);
+      await this.app.workspace.revealLeaf(leaf);
     } catch (e) {
-      console.error(`[Knowledge Brain]   activateView('${type}') failed:`, e);
       new Notice(
         `Knowledge Brain: failed to open '${type}' — ${e instanceof Error ? e.message : String(e)}`,
       );
@@ -355,8 +374,8 @@ export default class KnowledgeBrainPlugin extends Plugin {
         reveal,
         split: false,
       });
-    } catch (e) {
-      console.error(`[Knowledge Brain] open ${type} pane failed:`, e);
+    } catch {
+      // Opening a sidebar pane must never break plugin startup or settings.
     }
   }
 
@@ -457,7 +476,8 @@ export default class KnowledgeBrainPlugin extends Plugin {
   // ---------------------------------------------------------- settings
 
   async loadSettings(): Promise<void> {
-    this.settings = { ...DEFAULT_SETTINGS, ...(await this.loadData()) };
+    const data = (await this.loadData()) as Partial<PluginSettings> | null;
+    this.settings = { ...DEFAULT_SETTINGS, ...(data ?? {}) };
     // Reconcile saved settings that predate a provider's model list: if the
     // stored model is empty or unknown for the selected provider, fall back to
     // that provider's default so the settings field is never empty.
