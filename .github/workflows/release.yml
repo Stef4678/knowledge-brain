@@ -38,8 +38,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "$GITHUB_REF_NAME" \
+          gh release create "${GITHUB_REF_NAME#v}" \
             --repo "$GITHUB_REPOSITORY" \
-            --title "Knowledge Brain $GITHUB_REF_NAME" \
+            --title "Knowledge Brain ${GITHUB_REF_NAME#v}" \
             --generate-notes \
             main.js manifest.json styles.css
