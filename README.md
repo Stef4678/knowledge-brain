@@ -4,7 +4,7 @@ An [Obsidian](https://obsidian.md) plugin that turns your markdown notes into a 
 
 > Any markdown note in your vault is already a thought. The plugin reads standard YAML frontmatter, so your knowledge base stays plain, portable markdown.
 
-**Author:** [Kerekes Stefan](https://github.com/Stef4678) · **Version:** 0.3.2 · Desktop only
+**Author:** [Kerekes Stefan](https://github.com/Stef4678) · **Version:** 0.3.8 · Desktop only
 
 ---
 
