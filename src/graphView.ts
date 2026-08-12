@@ -448,6 +448,29 @@ export class GraphView extends ItemView {
     };
     this.clearPathBtn = clearPath;
 
+    const exportBtn = toolbar.createEl("button", {
+      cls: "mod-muted",
+      text: "Export PNG",
+      attr: { title: "Download the current graph as a PNG image" },
+    });
+    exportBtn.onclick = () => {
+      if (!this.cy) {
+        return;
+      }
+      // Render the whole graph (not just the visible viewport) at 2x for a
+      // crisp shareable image, on the app's background so theme-colored labels
+      // stay readable on a light viewer.
+      const pngUrl = this.cy.png({
+        full: true,
+        scale: 2,
+        bg: cssVar("--background-primary", "#ffffff"),
+      });
+      const a = document.createElement("a");
+      a.href = pngUrl;
+      a.download = `knowledge-brain-graph-${new Date().toISOString().replace(/[:.]/g, "-")}.png`;
+      a.click();
+    };
+
     const legend = this.container.createDiv({ cls: "kb-graph-legend" });
     legend.createSpan({ text: "click a node to open" });
 
