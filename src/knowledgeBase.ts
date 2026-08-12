@@ -835,10 +835,9 @@ export class KnowledgeBase {
       const file = this.app.vault.getAbstractFileByPath(rec.path);
       if (file instanceof TFile) {
         try {
-          // keepHistory keeps Obsidian's file history / undo as a safety net.
-          // Note: `no-restricted-disable` bans suppressing prefer-file-manager-trash-file;
-          // this is a deliberate hard delete (the KB's own soft-delete handles trash).
-          await this.app.vault.delete(file, true);
+          // Send to trash per the user's preference (system trash or vault
+          // .trash/) so a deleted thought stays recoverable.
+          await this.app.fileManager.trashFile(file);
         } catch {
           // File may already be gone; the record is dropped either way.
         }

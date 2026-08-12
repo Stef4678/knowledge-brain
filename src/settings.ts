@@ -1,4 +1,14 @@
-import { Notice, Plugin, PluginSettingTab, Setting, type App } from "obsidian";
+import {
+  Notice,
+  Plugin,
+  PluginSettingTab,
+  requireApiVersion,
+  Setting,
+  type App,
+  type SettingDefinition,
+  type SettingDefinitionGroup,
+  type SettingDefinitionItem,
+} from "obsidian";
 import { ConfirmModal } from "./confirmModal";
 import { QUESTION_TYPES, type Provider, type QuestionType, type PluginSettings } from "./types";
 import { modelSupportsThinking, testProvider } from "./deepseek";
@@ -133,7 +143,246 @@ export class KnowledgeBrainSettingsTab extends PluginSettingTab {
     this.onChange(this.settings);
   }
 
+  // ------------------------------------------------------- declarative API
+
+  /** Read a control's value from the live settings object (Obsidian 1.13+). */
+  getControlValue(key: string): unknown {
+    if (key === "followupCount") {
+      return String(this.settings.followupCount);
+    }
+    return (this.settings as unknown as Record<string, unknown>)[key];
+  }
+
+  /** Persist a control's value through the existing onChange pipeline. */
+  setControlValue(key: string, value: unknown): void {
+    if (key === "provider") {
+      this.handleProviderChange(value as Provider);
+      return;
+    }
+    if (key === "followupCount") {
+      this.set("followupCount", Number(value));
+      return;
+    }
+    this.set(key as keyof PluginSettings, value as PluginSettings[keyof PluginSettings]);
+  }
+
+  /** Reconcile provider switches: reset model + clamp the temperature. */
+  private handleProviderChange(provider: Provider): void {
+    const known = PROVIDER_MODELS[provider];
+    const current = this.settings.model;
+    const temperature =
+      provider === "claude" ? Math.min(this.settings.temperature, 1) : this.settings.temperature;
+    if (!known.includes(current)) {
+      this.settings = {
+        ...this.settings,
+        provider,
+        model: PROVIDER_DEFAULT_MODELS[provider],
+        temperature,
+      };
+      this.onChange(this.settings);
+    } else if (temperature !== this.settings.temperature) {
+      this.settings = { ...this.settings, provider, temperature };
+      this.onChange(this.settings);
+    } else {
+      this.set("provider", provider);
+    }
+    // Rebuild the definitions so Model options / Thinking availability /
+    // Temperature range reflect the new provider. update() is @since 1.13.0;
+    // on older Obsidian the imperative render() path handles this.
+    if (requireApiVersion("1.13.0")) {
+      this.update();
+    }
+  }
+
+  getSettingDefinitions(): SettingDefinitionItem[] {
+    const s = this.settings;
+    const tempMax = s.provider === "claude" ? 1 : 2;
+    const thinkingSupported = modelSupportsThinking(s.provider, s.model);
+    const core: SettingDefinition[] = [
+      {
+        name: "",
+        desc: "Knowledge Brain turns your markdown notes into a connected knowledge graph. Notes become “thoughts” linked through `parents:` frontmatter and visualized in an interactive graph. Chat with your notes, get AI-assisted tag and status suggestions, and receive follow-up questions to deepen your thinking.",
+      },
+      {
+        name: "Provider",
+        desc: "Which AI provider powers chat and AI-assisted ops.",
+        control: { type: "dropdown", key: "provider", options: PROVIDER_LABELS },
+      },
+      {
+        name: "API key",
+        desc: "Required for chat and AI-assisted ops.",
+        control: { type: "text", key: "apiKey", placeholder: "sk-..." },
+      },
+      {
+        name: "Model",
+        desc: `Model id for ${PROVIDER_LABELS[s.provider]}. Pick a known one below, or type a custom id in the box.`,
+        render: (setting) => {
+          setting.addText((text) =>
+            text.setPlaceholder("custom model id").onChange(async (value) => {
+              this.set("model", value.trim() || PROVIDER_DEFAULT_MODELS[this.settings.provider]);
+            }),
+          );
+          setting.addDropdown((dropdown) => {
+            const models = PROVIDER_MODELS[this.settings.provider];
+            if (!models.includes(this.settings.model)) {
+              dropdown.addOption(this.settings.model, `${this.settings.model} (custom)`);
+            }
+            for (const m of models) {
+              dropdown.addOption(m, m);
+            }
+            dropdown.setValue(this.settings.model);
+            dropdown.onChange(async (value) => {
+              this.set("model", value);
+            });
+          });
+        },
+      },
+      {
+        name: "Temperature",
+        desc:
+          s.provider === "claude"
+            ? "Chat sampling temperature (0–1)."
+            : "Chat sampling temperature (0–2).",
+        control: { type: "slider", key: "temperature", min: 0, max: tempMax, step: 0.1 },
+      },
+      {
+        name: "Thinking mode",
+        desc: thinkingSupported
+          ? `Reasoning is on for ${s.model}. Stays on until you turn it off.`
+          : `${s.model} does not support thinking mode, so this setting is ignored for it.`,
+        control: {
+          type: "toggle",
+          key: "thinking",
+          disabled: () => !modelSupportsThinking(this.settings.provider, this.settings.model),
+        },
+      },
+      {
+        name: "Default folder for new thoughts",
+        desc: "Folder inside the vault where new thoughts are created (e.g. Thoughts). Leave empty for the vault root.",
+        control: { type: "text", key: "defaultFolder", placeholder: "Thoughts" },
+      },
+      {
+        name: "Graph node spacing",
+        desc: "Distance between nodes in the graph (0.6 = dense, 6 = spread out).",
+        control: { type: "slider", key: "graphSpacing", min: 0.6, max: 6, step: 0.1 },
+      },
+      {
+        name: "Tag word separator",
+        desc: "Separator used between words in multi-word tags, e.g. machine-learning vs machine_learning.",
+        control: {
+          type: "dropdown",
+          key: "tagSeparator",
+          options: { "-": "hyphen (-)", _: "underscore (_)" },
+        },
+      },
+      {
+        name: "AI tag suggestions",
+        desc: "Allow AI to suggest tags for a thought. Off hides the Suggest tags option.",
+        control: { type: "toggle", key: "enableAiTags" },
+      },
+      {
+        name: "AI status suggestions",
+        desc: "Allow AI to suggest a status for a thought. Off hides the Suggest status option.",
+        control: { type: "toggle", key: "enableAiStatus" },
+      },
+      {
+        name: "Follow-ups, siblings & backlinks in one page",
+        desc: "Show follow-up questions, siblings, and backlinks of the active note in a single right-sidebar tab. Off keeps them as separate tabs.",
+        control: { type: "toggle", key: "combineSidebarPanes" },
+      },
+    ];
+
+    const followup: SettingDefinition[] = QUESTION_TYPES.map((group) => ({
+      name: GROUP_LABELS[group],
+      render: (setting) => {
+        setting.addToggle((toggle) =>
+          toggle.setValue(this.settings.followupGroups[group]).onChange(async (value) => {
+            this.set("followupGroups", {
+              ...this.settings.followupGroups,
+              [group]: value,
+            });
+          }),
+        );
+      },
+    }));
+    followup.push({
+      name: "Questions per group",
+      desc: "Number of follow-up questions generated for each enabled group.",
+      control: {
+        type: "dropdown",
+        key: "followupCount",
+        options: Object.fromEntries([1, 2, 3, 4, 5].map((n) => [String(n), String(n)])),
+      },
+    });
+
+    const coreGroup: SettingDefinitionGroup = { type: "group", heading: "Core", items: core };
+    const followupGroup: SettingDefinitionGroup = {
+      type: "group",
+      heading: "Follow-up questions",
+      items: [
+        {
+          name: "",
+          desc: "Choose which question groups are generated for a thought, and how many questions each enabled group gets.",
+        },
+        ...followup,
+      ],
+    };
+
+    return [
+      coreGroup,
+      followupGroup,
+      {
+        name: "API key status",
+        render: (setting) => {
+          setting.addButton((button) =>
+            button.setButtonText("Test connection").onClick(async () => {
+              const s = this.settings;
+              if (!hasApiKey(s)) {
+                new Notice("Knowledge Brain: no API key configured.");
+                return;
+              }
+              try {
+                const summary = await testProvider(s);
+                new Notice(`Knowledge Brain: ${summary}`);
+              } catch (e) {
+                new Notice(`Knowledge Brain: ${e instanceof Error ? e.message : String(e)}`);
+              }
+            }),
+          );
+        },
+      },
+      {
+        name: "Reset settings",
+        desc: "Restore all Knowledge Brain settings to their defaults.",
+        render: (setting) => {
+          setting.addButton((button) =>
+            button.setButtonText("Reset").onClick(() => {
+              new ConfirmModal(
+                this.app,
+                "Reset all Knowledge Brain settings to their defaults? This cannot be undone.",
+                () => {
+                  void this.onReset();
+                  if (requireApiVersion("1.13.0")) {
+                    this.update();
+                  }
+                },
+              ).open();
+            }),
+          );
+        },
+      },
+    ];
+  }
+
   display(): void {
+    this.render();
+  }
+
+  /**
+   * Imperative render — the fallback for Obsidian < 1.13.0, which does not
+   * know the declarative getSettingDefinitions() API.
+   */
+  private render(): void {
     const { containerEl } = this;
     containerEl.empty();
 
@@ -172,7 +421,7 @@ export class KnowledgeBrainSettingsTab extends PluginSettingTab {
           } else {
             this.set("provider", provider);
           }
-          this.display();
+          this.render();
         });
       });
 
@@ -375,7 +624,7 @@ export class KnowledgeBrainSettingsTab extends PluginSettingTab {
             "Reset all Knowledge Brain settings to their defaults? This cannot be undone.",
             () => {
               void this.onReset();
-              this.display();
+              this.render();
             },
           ).open();
         }),

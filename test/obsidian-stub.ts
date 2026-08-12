@@ -43,6 +43,10 @@ export function requestUrl(): never {
   throw new Error("requestUrl not implemented in test stub");
 }
 
+export function requireApiVersion(_version: string): boolean {
+  return false;
+}
+
 export class Plugin {
   manifest = { id: "stub", name: "Stub", version: "0.0.0" };
 }
@@ -178,6 +182,10 @@ export class FakeVault {
     this.files.delete(file.path);
   }
 
+  async trashFile(file: TFile): Promise<void> {
+    this.files.delete(file.path);
+  }
+
   async createFolder(path: string): Promise<unknown> {
     // Folders are implicit in the files map; nothing to create in the stub.
     return { path };
@@ -196,9 +204,14 @@ export class FakeVault {
   offref(): void {}
 }
 
-export function fakeApp(vault: FakeVault): { vault: FakeVault; metadataCache: { on(): EventRef; offref(): void } } {
+export function fakeApp(vault: FakeVault): {
+  vault: FakeVault;
+  fileManager: { trashFile(file: TFile): Promise<void> };
+  metadataCache: { on(): EventRef; offref(): void };
+} {
   return {
     vault,
+    fileManager: { trashFile: (file: TFile) => vault.trashFile(file) },
     metadataCache: {
       on: () => ({ id: ++refId }),
       offref: () => {},

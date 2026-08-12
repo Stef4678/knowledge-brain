@@ -533,68 +533,6 @@ export async function nodeStreamChat(
 }
 
 /**
- * Stream an SSE response via the renderer's fetch (progressive tokens when the
- * environment's CSP/CORS allow it).
- */
-async function fetchStreamChat(
-  url: string,
-  headers: Record<string, string>,
-  body: Record<string, unknown>,
-  extract: (data: string) => ExtractedDelta | null,
-  onEvent: (e: ChatEvent) => void,
-  timeoutMs: number,
-): Promise<void> {
-  const controller = new AbortController();
-  const timer = window.setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    // Renderer-side fallback when the Node `http`/`https` modules are unavailable.
-    // Note: `no-restricted-globals` flags `fetch` (prefer `requestUrl`), and the
-    // config bans disabling it — but `requestUrl` buffers the whole response, so
-    // fetch is the only renderer client that streams tokens. Kept as a warning.
-    const resp = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...headers },
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    });
-    if (!resp.ok || !resp.body) {
-      const text = await resp.text().catch(() => "");
-      throw errorFromResponse(resp.status, text);
-    }
-    const reader = resp.body.getReader();
-    const decoder = new TextDecoder("utf-8");
-    const buffer: { data: string } = { data: "" };
-    let stopped = false;
-    for (;;) {
-      const { value, done } = await reader.read();
-      if (done) {
-        break;
-      }
-      if (value) {
-        stopped = pumpSseChunk(
-          buffer,
-          decoder.decode(value, { stream: true }),
-          extract,
-          (d) => emitExtracted(d, onEvent),
-        );
-        if (stopped) {
-          await reader.cancel().catch(() => {});
-          break;
-        }
-      }
-    }
-    if (!stopped) {
-      const tail = decoder.decode();
-      if (tail) {
-        pumpSseChunk(buffer, tail, extract, (d) => emitExtracted(d, onEvent));
-      }
-    }
-  } finally {
-    window.clearTimeout(timer);
-  }
-}
-
-/**
  * Stream chat with the selected provider. OpenAI-compatible providers stream
  * reasoning + content deltas; Claude and Gemini stream content deltas.
  */
@@ -614,9 +552,9 @@ export async function streamChat(
   const timeoutMs = 120_000;
 
   // Transport ladder. Node https/http (desktop) bypass the renderer CSP/CORS
-  // and deliver tokens progressively — the primary path. Renderer fetch is a
-  // fallback where Node networking is unavailable, and the buffered requestUrl
-  // call is the last resort.
+  // and deliver tokens progressively — the primary path. If Node networking
+  // fails before any content is emitted, fall back to the buffered requestUrl
+  // call (main process, no CORS).
   let emitted = false;
   const track: (e: ChatEvent) => void = (e) => {
     if (e.type !== "done") {
@@ -633,18 +571,7 @@ export async function streamChat(
     if (emitted || e instanceof KbError) {
       throw e;
     }
-    // Node unavailable or failed before any content — try the renderer fetch.
-  }
-
-  try {
-    await fetchStreamChat(url, headers, body, extract, track, timeoutMs);
-    onEvent({ type: "done" });
-    return;
-  } catch (e) {
-    if (emitted || e instanceof KbError) {
-      throw e;
-    }
-    // fetch blocked (CSP/CORS) or failed before content — buffered fallback.
+    // Node networking failed before any content — buffered requestUrl fallback.
   }
 
   const { status, text } = await postText(url, headers, body, timeoutMs);
