@@ -15,6 +15,8 @@ An [Obsidian](https://obsidian.md) plugin that turns your markdown notes into a 
   Your browser does not support the video tag.
 </video>
 <br />
+<img width="700" alt="Knowledge_brain" src="https://github.com/user-attachments/assets/97e9eaf4-0eb0-4aae-9bf8-b6ebe8a17652" />
+<br />
 <img width="700" alt="Screenshot 2026-08-10 181644" src="https://github.com/user-attachments/assets/b07c076f-6862-4f6c-b583-b4cc2947d846" />
 <br />
 <img width="700" alt="Screenshot 2026-08-10 180943" src="https://github.com/user-attachments/assets/0a3dddad-9e7a-437e-ab11-dca39c17e8ef" />
