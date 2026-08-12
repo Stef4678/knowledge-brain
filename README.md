@@ -4,7 +4,7 @@ An [Obsidian](https://obsidian.md) plugin that turns your markdown notes into a 
 
 > Any markdown note in your vault is already a thought. The plugin reads standard YAML frontmatter, so your knowledge base stays plain, portable markdown.
 
-**Author:** [Kerekes Stefan](https://github.com/Stef4678) · **Version:** 0.3.0 · Desktop only
+**Author:** [Kerekes Stefan](https://github.com/Stef4678) · **Version:** 0.3.1 · Desktop only
 
 ---
 
@@ -22,7 +22,6 @@ https://github.com/user-attachments/assets/9b032531-b89f-4e8f-bcb3-f0cb6ed3d4fe
 <img width="1918" height="1022" alt="Screenshot 2026-08-11 194821" src="https://github.com/user-attachments/assets/3695feda-e95c-4967-afe8-a6c09899b1b3" />
 <img width="888" height="1022" alt="Screenshot 2026-08-10 181137" src="https://github.com/user-attachments/assets/9f047390-0e56-4376-8cde-54e141380b1b" />
 <img width="887" height="1021" alt="Screenshot 2026-08-10 181157" src="https://github.com/user-attachments/assets/8d4dbbb4-dd4b-49ca-8ba3-ab12b1453a69" />
-
 
 ### 🧠 Thoughts as plain markdown
 - Every markdown note is a *thought*, indexed live from your vault (create, edit, rename, delete — the index follows automatically).
