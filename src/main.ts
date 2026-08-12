@@ -235,6 +235,11 @@ export default class KnowledgeBrainPlugin extends Plugin {
       },
     });
     this.addCommand({
+      id: "copy-thought-link",
+      name: "Copy link to active thought",
+      callback: () => this.copyThoughtLink(),
+    });
+    this.addCommand({
       id: "search-thoughts",
       name: "Search thoughts",
       callback: () => new ThoughtSearchModal(this.app, this.kb).open(),
@@ -553,6 +558,20 @@ export default class KnowledgeBrainPlugin extends Plugin {
       n++;
     }
     return `${title} ${n}`;
+  }
+
+  /** Copy a [[wikilink]] to the active markdown note. */
+  private copyThoughtLink(): void {
+    const file = this.app.workspace.getActiveFile();
+    if (!file || file.extension !== "md") {
+      new Notice("Knowledge Brain: no active markdown note.");
+      return;
+    }
+    const link = `[[${file.basename}]]`;
+    void navigator.clipboard.writeText(link).then(
+      () => new Notice(`Copied ${link}`),
+      () => new Notice("Knowledge Brain: could not copy to clipboard."),
+    );
   }
 
   // ---------------------------------------------------------- settings
