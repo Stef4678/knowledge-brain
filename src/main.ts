@@ -1,4 +1,4 @@
-import { App, Modal, Notice, Plugin, Setting, TFile } from "obsidian";
+import { App, Modal, normalizePath, Notice, Plugin, Setting, TFile } from "obsidian";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
@@ -58,7 +58,7 @@ function applyGraphIcon(el: HTMLElement): void {
   el.append(svg);
 }
 
-import { KnowledgeBase } from "./knowledgeBase";
+import { KnowledgeBase, sanitizeTitle } from "./knowledgeBase";
 import { AiService } from "./ai";
 import type { FollowupGroup, FollowupQuestion } from "./ai";
 import { SuggestStatusModal, SuggestTagsModal } from "./aiModals";
@@ -225,6 +225,13 @@ export default class KnowledgeBrainPlugin extends Plugin {
       callback: () => {
         const modal = new CreateThoughtModal(this.app, this.kb);
         modal.open();
+      },
+    });
+    this.addCommand({
+      id: "create-thought-from-selection",
+      name: "Create thought from selection",
+      editorCallback: (editor, view) => {
+        void this.createThoughtFromSelection(editor.getSelection(), view.file);
       },
     });
     this.addCommand({
@@ -493,6 +500,59 @@ export default class KnowledgeBrainPlugin extends Plugin {
       return;
     }
     chat.setContextThought(thought);
+  }
+
+  /** Create a new thought whose content is the selected text (title from its first line). */
+  private async createThoughtFromSelection(
+    selection: string,
+    file: TFile | null,
+  ): Promise<void> {
+    const content = selection.trim();
+    if (!content) {
+      new Notice("Knowledge Brain: select some text in a note first.");
+      return;
+    }
+    const title = sanitizeTitle(
+      content
+        .split("\n")[0]
+        .replace(/^#+\s*/, "")
+        .replace(/[*_`~]/g, "")
+        .trim()
+        .slice(0, 60),
+    );
+    const uniqueTitle = this.uniqueThoughtTitle(title);
+    // Optionally file the new thought under the note the text was selected from.
+    const parentId = file?.basename ?? "";
+    const parents =
+      parentId && parentId !== uniqueTitle && this.kb.getThought(parentId)
+        ? [parentId]
+        : [];
+    try {
+      const thought = await this.kb.createThought(uniqueTitle, content, parents, "", [], "");
+      new Notice(`Created "${thought.title}"`);
+      const path = normalizePath(
+        this.settings.defaultFolder
+          ? `${this.settings.defaultFolder}/${thought.title}.md`
+          : `${thought.title}.md`,
+      );
+      const created = this.app.vault.getAbstractFileByPath(path);
+      if (created instanceof TFile) {
+        await this.app.workspace.getLeaf(false).openFile(created);
+      }
+    } catch (e) {
+      new Notice(`Knowledge Brain: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+
+  private uniqueThoughtTitle(title: string): string {
+    if (!this.kb.getThought(title)) {
+      return title;
+    }
+    let n = 2;
+    while (this.kb.getThought(`${title} ${n}`)) {
+      n++;
+    }
+    return `${title} ${n}`;
   }
 
   // ---------------------------------------------------------- settings
