@@ -1,0 +1,35 @@
+{
+  "name": "knowledge-brain",
+  "version": "0.3.1",
+  "description": "Knowledge Brain as an Obsidian plugin: thoughts as markdown notes, a directed DAG graph, and streaming AI chat (DeepSeek / OpenAI / Gemini / Claude).",
+  "main": "main.js",
+  "scripts": {
+    "dev": "node esbuild.config.mjs",
+    "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
+    "build:test": "esbuild test/kb-test.ts --bundle --format=cjs --platform=node --outfile=test/kb-test.cjs --alias:obsidian=./test/obsidian-stub.ts && esbuild test/sse-test.ts --bundle --format=cjs --platform=node --outfile=test/sse-test.cjs --alias:obsidian=./test/obsidian-stub.ts",
+    "test": "npm run build:test && node test/kb-test.cjs && node test/sse-test.cjs"
+  },
+  "keywords": [
+    "obsidian",
+    "knowledge-base",
+    "graph",
+    "dag",
+    "deepseek"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "cytoscape": "^3.30.2"
+  },
+  "devDependencies": {
+    "@types/cytoscape": "^3.21.8",
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^20.14.0",
+    "builtin-modules": "^3.3.0",
+    "esbuild": "^0.24.0",
+    "js-yaml": "^5.2.3",
+    "obsidian": "^1.7.2",
+    "tslib": "^2.6.3",
+    "typescript": "^5.6.0"
+  }
+}
