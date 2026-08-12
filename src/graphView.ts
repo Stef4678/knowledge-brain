@@ -3,6 +3,7 @@ import cytoscape, { type Core, type ElementDefinition } from "cytoscape";
 import { FOLLOWUP_GROUPS } from "./ai";
 import type { AiService, FollowupGroup, FollowupQuestion } from "./ai";
 import { SuggestStatusModal, SuggestTagsModal } from "./aiModals";
+import { ConfirmModal } from "./confirmModal";
 import { findSimilarPairs, type SimilarPair } from "./bm25";
 import { findShortestPath, neighborhoodIds } from "./graphAlgos";
 import { KnowledgeBase } from "./knowledgeBase";
@@ -989,14 +990,14 @@ export class GraphView extends ItemView {
   }
 
   /** Right-click a node offers to delete it. */
-  private async maybeDelete(id: string): Promise<void> {
+  private maybeDelete(id: string): void {
     const thought = this.kb.getThought(id);
     if (!thought) {
       return;
     }
-    if (window.confirm(`Delete "${thought.title}"? This cannot be undone.`)) {
-      await this.kb.deleteThought(id, false);
-    }
+    new ConfirmModal(this.app, `Delete "${thought.title}"? This cannot be undone.`, () => {
+      void this.kb.deleteThought(id, false);
+    }).open();
   }
 }
 

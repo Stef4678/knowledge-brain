@@ -3,7 +3,7 @@
  * Implements just enough of the vault/metadata API for KnowledgeBase to run
  * against an in-memory map of files.
  */
-import { load as yamlLoad, dump as yamlDump } from "js-yaml";
+import { parse as yamlParse, stringify as yamlStringify } from "yaml";
 
 // The plugin uses `window.setTimeout` etc. (per Obsidian's lint rules), but the
 // smoke tests run in Node where `window` does not exist. Point it at the global
@@ -18,14 +18,14 @@ export type RequestUrlParam = unknown;
 
 export function parseYaml(text: string): unknown {
   try {
-    return yamlLoad(text);
+    return yamlParse(text);
   } catch {
     return null;
   }
 }
 
 export function stringifyYaml(value: unknown): string {
-  return yamlDump(value, { lineWidth: -1 });
+  return yamlStringify(value, { lineWidth: -1 });
 }
 
 export function normalizePath(p: string): string {
@@ -77,6 +77,40 @@ export class Setting {
   addButton(): this {
     return this;
   }
+}
+
+// Exported because settings.ts → confirmModal.ts imports them; the smoke tests
+// never open a modal, so these are shape-only stubs.
+export class ButtonComponent {
+  constructor(_containerEl: unknown) {}
+  setButtonText(_text: string): this {
+    return this;
+  }
+  setClass(_cls: string): this {
+    return this;
+  }
+  onClick(_cb: () => void): this {
+    return this;
+  }
+}
+
+export class Modal {
+  app: unknown;
+  contentEl = {
+    createEl: (_tag: string, opts?: Record<string, unknown>) => ({
+      textContent: typeof opts?.text === "string" ? opts.text : "",
+    }),
+    createDiv: () => ({}),
+    empty: () => {},
+  };
+
+  constructor(app: unknown) {
+    this.app = app;
+  }
+  open(): void {}
+  close(): void {}
+  onOpen(): void {}
+  onClose(): void {}
 }
 
 let refId = 0;

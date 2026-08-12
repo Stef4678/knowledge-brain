@@ -836,6 +836,8 @@ export class KnowledgeBase {
       if (file instanceof TFile) {
         try {
           // keepHistory keeps Obsidian's file history / undo as a safety net.
+          // Note: `no-restricted-disable` bans suppressing prefer-file-manager-trash-file;
+          // this is a deliberate hard delete (the KB's own soft-delete handles trash).
           await this.app.vault.delete(file, true);
         } catch {
           // File may already be gone; the record is dropped either way.

@@ -1,4 +1,5 @@
 import { Notice, Plugin, PluginSettingTab, Setting, type App } from "obsidian";
+import { ConfirmModal } from "./confirmModal";
 import { QUESTION_TYPES, type Provider, type QuestionType, type PluginSettings } from "./types";
 import { modelSupportsThinking, testProvider } from "./deepseek";
 
@@ -368,15 +369,15 @@ export class KnowledgeBrainSettingsTab extends PluginSettingTab {
       .setName("Reset settings")
       .setDesc("Restore all Knowledge Brain settings to their defaults.")
       .addButton((button) =>
-        button.setButtonText("Reset").onClick(async () => {
-          if (
-            window.confirm(
-              "Reset all Knowledge Brain settings to their defaults? This cannot be undone.",
-            )
-          ) {
-            await this.onReset();
-            this.display();
-          }
+        button.setButtonText("Reset").onClick(() => {
+          new ConfirmModal(
+            this.app,
+            "Reset all Knowledge Brain settings to their defaults? This cannot be undone.",
+            () => {
+              void this.onReset();
+              this.display();
+            },
+          ).open();
         }),
       );
   }

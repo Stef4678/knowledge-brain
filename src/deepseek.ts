@@ -1,7 +1,11 @@
 import { KbError, errorFromResponse, PROVIDER_BASE_URLS } from "./settings";
 import { requestUrl, type RequestUrlParam } from "obsidian";
-import type { ClientRequest, IncomingMessage } from "http";
 import type { PluginSettings, Provider } from "./types";
+
+/** Coerce an unknown catch-value into an Error without `String()` on `unknown`. */
+function asError(e: unknown): Error {
+  return e instanceof Error ? e : new Error(typeof e === "string" ? e : "Unknown error");
+}
 
 export interface ChatMessage {
   role: "system" | "user" | "assistant";
@@ -214,7 +218,7 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
       },
       (e) => {
         window.clearTimeout(timer);
-        reject(e instanceof Error ? e : new Error(String(e)));
+        reject(asError(e));
       },
     );
   });
@@ -375,23 +379,55 @@ function pumpSseChunk(
   return false;
 }
 
-let nodeModules:
-  | { http: typeof import("http"); https: typeof import("https") }
-  | null
-  | undefined;
+/**
+ * Minimal structural views of the Node `http`/`https` request API, declared
+ * locally instead of via `typeof import("http")` / `Buffer`. Keeps this block
+ * fully typed even when the lint checker's TypeScript program cannot resolve
+ * `@types/node` — there, those Node types degrade to `any` and trip the
+ * `no-unsafe-*` rules.
+ */
+interface NodeResponse {
+  statusCode?: number;
+  on: (event: "data" | "end" | "error", cb: (arg?: unknown) => void) => void;
+  setEncoding: (encoding: string) => void;
+}
+
+interface NodeRequest {
+  on: (event: "error", cb: (err: Error) => void) => void;
+  write: (data: string) => void;
+  end: () => void;
+  destroy: () => void;
+}
+
+interface NodeRequestOptions {
+  hostname: string;
+  port: number;
+  path: string;
+  method: string;
+  headers: Record<string, string>;
+}
+
+type NodeRequestFn = (
+  options: NodeRequestOptions,
+  callback?: (res: NodeResponse) => void,
+) => NodeRequest;
+
+interface NodeHttpModule {
+  request: NodeRequestFn;
+}
+
+let nodeModules: { http: NodeHttpModule; https: NodeHttpModule } | null | undefined;
 
 /** Lazy-load the Node networking modules (available on desktop Obsidian). */
-function getNodeModules():
-  | { http: typeof import("http"); https: typeof import("https") }
-  | null {
+function getNodeModules(): { http: NodeHttpModule; https: NodeHttpModule } | null {
   if (nodeModules === undefined) {
     try {
       // Obsidian desktop exposes Node's `require` in the plugin scope. Route
-      // through a typed alias so the module values are typed, not `any`.
+      // through `unknown` so the module values are typed, not `any`.
       const nodeRequire = require as unknown as (id: string) => unknown;
       nodeModules = {
-        http: nodeRequire("http") as typeof import("http"),
-        https: nodeRequire("https") as typeof import("https"),
+        http: nodeRequire("http") as NodeHttpModule,
+        https: nodeRequire("https") as NodeHttpModule,
       };
     } catch {
       nodeModules = null;
@@ -424,16 +460,11 @@ export async function nodeStreamChat(
     throw new NodeStreamUnavailable();
   }
   const isHttps = target.protocol === "https:";
-  const request = (
-    isHttps ? mods.https.request : mods.http.request
-  ) as (
-    options: import("http").RequestOptions,
-    callback?: (res: IncomingMessage) => void,
-  ) => ClientRequest;
+  const request: NodeRequestFn = isHttps ? mods.https.request : mods.http.request;
   const payload = JSON.stringify(body);
   const buffer: { data: string } = { data: "" };
   await new Promise<void>((resolve, reject) => {
-    let req: ClientRequest;
+    let req: NodeRequest;
     let settled = false;
     const timer = window.setTimeout(() => {
       if (!settled) {
@@ -461,14 +492,18 @@ export async function nodeStreamChat(
         headers: {
           "Content-Type": "application/json",
           ...headers,
-          "Content-Length": String(Buffer.byteLength(payload)),
+          "Content-Length": String(new TextEncoder().encode(payload).length),
         },
       },
-      (res: IncomingMessage) => {
+      (res: NodeResponse) => {
         if (!res.statusCode || res.statusCode < 200 || res.statusCode >= 300) {
           let errBody = "";
-          res.on("data", (d: Buffer) => {
-            errBody += d.toString("utf8");
+          res.on("data", (d) => {
+            if (typeof d === "string") {
+              errBody += d;
+            } else if (d instanceof Uint8Array) {
+              errBody += new TextDecoder().decode(d);
+            }
           });
           res.on("end", () => {
             finish(() =>
@@ -479,8 +514,8 @@ export async function nodeStreamChat(
         }
         res.setEncoding("utf8");
         let stopped = false;
-        res.on("data", (chunk: string) => {
-          if (stopped) {
+        res.on("data", (chunk) => {
+          if (stopped || typeof chunk !== "string") {
             return;
           }
           stopped = pumpSseChunk(buffer, chunk, extract, (d) =>
@@ -488,14 +523,10 @@ export async function nodeStreamChat(
           );
         });
         res.on("end", () => finish(resolve));
-        res.on("error", (e) =>
-          finish(() => reject(e instanceof Error ? e : new Error(String(e)))),
-        );
+        res.on("error", (e) => finish(() => reject(asError(e))));
       },
     );
-    req.on("error", (e) =>
-      finish(() => reject(e instanceof Error ? e : new Error(String(e)))),
-    );
+    req.on("error", (e) => finish(() => reject(asError(e))));
     req.write(payload);
     req.end();
   });
@@ -516,6 +547,10 @@ async function fetchStreamChat(
   const controller = new AbortController();
   const timer = window.setTimeout(() => controller.abort(), timeoutMs);
   try {
+    // Renderer-side fallback when the Node `http`/`https` modules are unavailable.
+    // Note: `no-restricted-globals` flags `fetch` (prefer `requestUrl`), and the
+    // config bans disabling it — but `requestUrl` buffers the whole response, so
+    // fetch is the only renderer client that streams tokens. Kept as a warning.
     const resp = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json", ...headers },
