@@ -10,10 +10,6 @@ An [Obsidian](https://obsidian.md) plugin that turns your markdown notes into a 
 
 ## Features
 
-<video width="700" controls autoplay loop muted>
-  <source src="https://github.com/user-attachments/assets/9b032531-b89f-4e8f-bcb3-f0cb6ed3d4fe" type="video/mp4">
-  Your browser does not support the video tag.
-</video>
 <br />
 <img width="700" alt="Knowledge_brain" src="https://github.com/user-attachments/assets/97e9eaf4-0eb0-4aae-9bf8-b6ebe8a17652" />
 <br />
