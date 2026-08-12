@@ -107,7 +107,9 @@ export default class KnowledgeBrainPlugin extends Plugin {
           this.kb.setTagSeparator(next.tagSeparator);
           void this.saveSettings().then(() => {
             if (paneChanged) {
-              this.syncSidebarPanes();
+              // The user explicitly switched the pane mode — apply the full
+              // layout (open the mode's panes), unlike a plain startup.
+              this.syncSidebarPanes(true);
             }
           });
         },
@@ -280,9 +282,10 @@ export default class KnowledgeBrainPlugin extends Plugin {
     // as a Notice + console error instead of silently killing startup.
     void this.init();
     // Right-sidebar panes. onLayoutReady ensures the workspace layout exists
-    // before we create leaves.
+    // before we create leaves. On startup we only enforce the combine mode —
+    // panes the user has closed must not be re-opened (openSeparatePanes=false).
     this.app.workspace.onLayoutReady(() => {
-      this.syncSidebarPanes();
+      this.syncSidebarPanes(false);
     });
   }
 
@@ -339,34 +342,29 @@ export default class KnowledgeBrainPlugin extends Plugin {
   }
 
   /**
-   * Merge `leaf` into the existing right-dock tab group, so a Knowledge Brain
-   * pane becomes a tab beside Outline/Tags instead of a separate vertical
-   * region that stays visible when another tab is active.
-   */
-  /**
-   * Open a KB pane in the right sidebar as a tab inside the existing dock.
-   * Grouping APIs (setGroupMember/setGroup) do not merge right-dock leaves in
-   * this Obsidian build, so we detach any existing KB leaf and re-create it via
-   * ensureSideLeaf, which Obsidian places in the right dock's tab group.
-   */
-  /**
-   * Open a KB pane in the right sidebar as a tab. When `reveal` is false, an
-   * existing tab is left untouched so Obsidian's remembered active tab (the
-   * one the user last selected) stays selected — the plugin does not steal
-   * focus on load. Only stale leaves outside the right dock are recreated.
+   * Open a KB pane in the right sidebar as a tab, guaranteeing at most one leaf
+   * of `type` exists there. When `reveal` is false an existing tab is left
+   * untouched so Obsidian's remembered active tab (the one the user last
+   * selected) stays selected — the plugin does not steal focus on load. Stray
+   * leaves (floated, in another dock, or duplicates restored from a stale
+   * workspace layout) are detached so a pane type never shows more than once.
    */
   private async ensurePaneInRightDock(type: string, reveal: boolean): Promise<void> {
     try {
-      const existing = this.app.workspace.getLeavesOfType(type)[0];
-      if (existing && existing.getRoot() === this.app.workspace.rightSplit) {
+      const leaves = this.app.workspace.getLeavesOfType(type);
+      const keep = leaves[0];
+      if (keep && keep.getRoot() === this.app.workspace.rightSplit) {
+        for (let i = 1; i < leaves.length; i++) {
+          leaves[i].detach();
+        }
         if (reveal) {
-          await this.app.workspace.revealLeaf(existing);
+          await this.app.workspace.revealLeaf(keep);
         }
         return;
       }
-      // Remove any stale leaf (e.g. created as a separate region), then open a
-      // proper right-dock tab without forcing it active.
-      for (const leaf of this.app.workspace.getLeavesOfType(type)) {
+      // No usable right-dock tab: remove any stray leaves and open a proper
+      // right-dock tab without forcing it active.
+      for (const leaf of leaves) {
         leaf.detach();
       }
       await this.app.workspace.ensureSideLeaf(type, "right", {
@@ -376,6 +374,17 @@ export default class KnowledgeBrainPlugin extends Plugin {
       });
     } catch {
       // Opening a sidebar pane must never break plugin startup or settings.
+    }
+  }
+
+  /**
+   * Startup-only: collapse duplicate leaves of `type` to a single right-dock
+   * tab. If the user has no such pane open, does nothing — a pane they closed
+   * stays closed.
+   */
+  private tidyPane(type: string): void {
+    if (this.app.workspace.getLeavesOfType(type).length > 0) {
+      void this.ensurePaneInRightDock(type, false);
     }
   }
 
@@ -402,12 +411,17 @@ export default class KnowledgeBrainPlugin extends Plugin {
   }
 
   /**
-   * Align the right-dock panes with the combine setting: detach the leaves the
-   * setting no longer wants, then (re)open the right ones. When merging is on,
-   * the combined pane also carries follow-ups, so the separate follow-ups tab
-   * is detached. Called on startup and whenever the setting changes.
+   * Align the right-dock panes with the combine setting, and collapse any
+   * duplicates so a pane type never appears twice. When merging is on the
+   * combined pane also carries follow-ups, so the separate follow-ups/backlinks/
+   * siblings tabs are detached and the single combined tab is kept. When merging
+   * is off the combined pane is removed and the separate panes are opened only
+   * when `openSeparatePanes` is true — that is, when the user just switched the
+   * mode in settings. On startup it stays false: existing panes are deduplicated
+   * (a stale workspace layout can restore several copies) but none are re-opened,
+   * so tabs the user has closed stay closed.
    */
-  private syncSidebarPanes(): void {
+  private syncSidebarPanes(openSeparatePanes: boolean): void {
     const combined = this.settings.combineSidebarPanes;
     if (combined) {
       const stale = [BACKLINKS_VIEW_TYPE, SIBLINGS_VIEW_TYPE, FOLLOWUPS_VIEW_TYPE];
@@ -421,9 +435,17 @@ export default class KnowledgeBrainPlugin extends Plugin {
       for (const leaf of this.app.workspace.getLeavesOfType(COMBINED_SIDEBAR_VIEW_TYPE)) {
         leaf.detach();
       }
-      void this.openBacklinksPane();
-      void this.openSiblingsPane();
-      void this.openFollowupsPane();
+      if (openSeparatePanes) {
+        void this.openBacklinksPane();
+        void this.openSiblingsPane();
+        void this.openFollowupsPane();
+      } else {
+        // Startup: dedupe any panes restored from the layout, but do not create
+        // panes the user has closed.
+        this.tidyPane(BACKLINKS_VIEW_TYPE);
+        this.tidyPane(SIBLINGS_VIEW_TYPE);
+        this.tidyPane(FOLLOWUPS_VIEW_TYPE);
+      }
     }
   }
 
@@ -498,7 +520,7 @@ export default class KnowledgeBrainPlugin extends Plugin {
     this.kb.setDefaultFolder(this.settings.defaultFolder);
     this.kb.setTagSeparator(this.settings.tagSeparator);
     await this.saveSettings();
-    this.syncSidebarPanes();
+    this.syncSidebarPanes(true);
   }
 }
 
