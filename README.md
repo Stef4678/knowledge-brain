@@ -11,7 +11,7 @@ An [Obsidian](https://obsidian.md) plugin that turns your markdown notes into a 
 ## Features
 
 https://github.com/user-attachments/assets/9b032531-b89f-4e8f-bcb3-f0cb6ed3d4fe
-<br />
+
 <img width="700" alt="Screenshot 2026-08-10 181644" src="https://github.com/user-attachments/assets/b07c076f-6862-4f6c-b583-b4cc2947d846" />
 <br />
 <img width="700" alt="Screenshot 2026-08-10 180943" src="https://github.com/user-attachments/assets/0a3dddad-9e7a-437e-ab11-dca39c17e8ef" />
