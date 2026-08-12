@@ -1,10 +1,13 @@
 /* Knowledge Brain plugin styles */
 
-.kb-settings-title {
-  margin-left: 0 !important;
-  margin-inline-start: 0 !important;
+/* Scope under Obsidian's settings container so specificity (not !important)
+   overrides the default title styling. */
+.workspace-settings .kb-settings-title,
+.vertical-tab-content-container .kb-settings-title {
+  margin-left: 0;
+  margin-inline-start: 0;
   padding-left: 0;
-  text-align: left !important;
+  text-align: left;
 }
 
 .kb-status {
