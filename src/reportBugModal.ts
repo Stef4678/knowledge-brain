@@ -10,6 +10,16 @@ import {
 
 const ISSUES_URL = "https://github.com/Stef4678/knowledge-brain/issues/new";
 
+/** The operating system, derived from Obsidian's Platform API. */
+function osName(): string {
+  if (Platform.isMacOS) return "macOS";
+  if (Platform.isWin) return "Windows";
+  if (Platform.isLinux) return "Linux";
+  if (Platform.isAndroidApp) return "Android";
+  if (Platform.isIosApp) return "iOS";
+  return "Unknown";
+}
+
 /** A markdown environment block appended to every bug report. */
 function environmentBlock(
   app: App,
@@ -29,7 +39,7 @@ function environmentBlock(
     `- Plugin: Knowledge Brain ${plugin.manifest.version}`,
     `- Obsidian: ${obsidianVersion}`,
     `- Platform: ${platform}`,
-    `- OS: ${navigator.userAgent}`,
+    `- OS: ${osName()}`,
     `- API key configured: ${apiKeyConfigured ? "yes" : "no"}`,
   ].join("\n");
 }

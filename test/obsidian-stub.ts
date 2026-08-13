@@ -88,6 +88,11 @@ export class Setting {
 export const Platform = {
   isDesktopApp: false,
   isMobileApp: false,
+  isMacOS: false,
+  isWin: true,
+  isLinux: false,
+  isAndroidApp: false,
+  isIosApp: false,
 };
 
 export class ButtonComponent {
