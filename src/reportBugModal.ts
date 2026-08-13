@@ -45,8 +45,8 @@ function environmentBlock(
 }
 
 /**
- * Collects a bug description and opens a pre-filled GitHub issue carrying the
- * environment info needed to reproduce the report.
+ * Collects a bug description and either opens a pre-filled GitHub issue or
+ * copies the report (description + environment info) to the clipboard.
  */
 export class ReportBugModal extends Modal {
   private plugin: Plugin;
@@ -75,13 +75,16 @@ export class ReportBugModal extends Modal {
 
     contentEl.createEl("p", {
       cls: "setting-item-description",
-      text: "Your plugin and environment info is attached to the issue automatically.",
+      text: "Your plugin and environment info are added automatically. Open the issue in GitHub, or copy the report if you don't have an account.",
     });
 
     const buttons = contentEl.createDiv({ cls: "modal-button-container" });
     new ButtonComponent(buttons)
       .setButtonText("Cancel")
       .onClick(() => this.close());
+    new ButtonComponent(buttons)
+      .setButtonText("Copy report")
+      .onClick(() => this.copy());
     new ButtonComponent(buttons)
       .setButtonText("Open issue")
       .setCta()
@@ -92,17 +95,33 @@ export class ReportBugModal extends Modal {
     this.contentEl.empty();
   }
 
+  /** The full report text: description plus the environment block. */
+  private buildReport(): string {
+    return [
+      this.description.trim(),
+      "",
+      environmentBlock(this.app, this.plugin, this.apiKeyConfigured),
+    ].join("\n");
+  }
+
   private submit(): void {
-    const description = this.description.trim();
-    if (!description) {
+    if (!this.description.trim()) {
       new Notice("Knowledge Brain: please describe the bug first.");
       return;
     }
-    const body = [description, "", environmentBlock(this.app, this.plugin, this.apiKeyConfigured)].join(
-      "\n",
-    );
-    const url = `${ISSUES_URL}?title=${encodeURIComponent("Bug report")}&body=${encodeURIComponent(body)}`;
+    const url = `${ISSUES_URL}?title=${encodeURIComponent("Bug report")}&body=${encodeURIComponent(this.buildReport())}`;
     window.open(url, "_blank");
     this.close();
+  }
+
+  private copy(): void {
+    if (!this.description.trim()) {
+      new Notice("Knowledge Brain: please describe the bug first.");
+      return;
+    }
+    void navigator.clipboard.writeText(this.buildReport()).then(
+      () => new Notice("Knowledge Brain: bug report copied to clipboard."),
+      () => new Notice("Knowledge Brain: could not copy the report."),
+    );
   }
 }
