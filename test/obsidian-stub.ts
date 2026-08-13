@@ -83,8 +83,13 @@ export class Setting {
   }
 }
 
-// Exported because settings.ts → confirmModal.ts imports them; the smoke tests
-// never open a modal, so these are shape-only stubs.
+// Exported because settings.ts → reportBugModal.ts / confirmModal.ts imports
+// them; the smoke tests never open a modal, so these are shape-only stubs.
+export const Platform = {
+  isDesktopApp: false,
+  isMobileApp: false,
+};
+
 export class ButtonComponent {
   constructor(_containerEl: unknown) {}
   setButtonText(_text: string): this {

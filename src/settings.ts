@@ -10,6 +10,7 @@ import {
   type SettingDefinitionItem,
 } from "obsidian";
 import { ConfirmModal } from "./confirmModal";
+import { ReportBugModal } from "./reportBugModal";
 import { QUESTION_TYPES, type Provider, type QuestionType, type PluginSettings } from "./types";
 import { modelSupportsThinking, testProvider } from "./deepseek";
 
@@ -121,6 +122,7 @@ export function errorFromResponse(status: number, text: string): KbError {
 }
 
 export class KnowledgeBrainSettingsTab extends PluginSettingTab {
+  private plugin: Plugin;
   private settings: PluginSettings;
   private onChange: (s: PluginSettings) => void;
   private onReset: () => Promise<void>;
@@ -133,6 +135,7 @@ export class KnowledgeBrainSettingsTab extends PluginSettingTab {
     onReset: () => Promise<void>,
   ) {
     super(app, plugin);
+    this.plugin = plugin;
     this.settings = settings;
     this.onChange = onChange;
     this.onReset = onReset;
@@ -367,6 +370,17 @@ export class KnowledgeBrainSettingsTab extends PluginSettingTab {
                   }
                 },
               ).open();
+            }),
+          );
+        },
+      },
+      {
+        name: "Report a bug",
+        desc: "Found an issue? Open a pre-filled GitHub issue with your environment info.",
+        render: (setting) => {
+          setting.addButton((button) =>
+            button.setButtonText("Report a bug").onClick(() => {
+              new ReportBugModal(this.app, this.plugin, hasApiKey(this.settings)).open();
             }),
           );
         },
@@ -627,6 +641,15 @@ export class KnowledgeBrainSettingsTab extends PluginSettingTab {
               this.render();
             },
           ).open();
+        }),
+      );
+
+    new Setting(containerEl)
+      .setName("Report a bug")
+      .setDesc("Found an issue? Open a pre-filled GitHub issue with your environment info.")
+      .addButton((button) =>
+        button.setButtonText("Report a bug").onClick(() => {
+          new ReportBugModal(this.app, this.plugin, hasApiKey(this.settings)).open();
         }),
       );
   }
