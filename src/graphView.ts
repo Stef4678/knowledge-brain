@@ -5,7 +5,7 @@ import type { AiService, FollowupGroup, FollowupQuestion } from "./ai";
 import { SuggestStatusModal, SuggestTagsModal } from "./aiModals";
 import { ConfirmModal } from "./confirmModal";
 import { findSimilarPairs, type SimilarPair } from "./bm25";
-import { findShortestPath, neighborhoodIds } from "./graphAlgos";
+import { buildContinuousPath, findShortestPath, neighborhoodIds } from "./graphAlgos";
 import { KnowledgeBase } from "./knowledgeBase";
 import { QUESTION_TYPES, THOUGHT_STATUSES } from "./types";
 import type { GraphData, GraphNode, PluginSettings, ThoughtLink } from "./types";
@@ -82,8 +82,21 @@ export class GraphView extends ItemView {
   /** Endpoints of the highlighted path (both set = path active). */
   private pathSourceId: string | null = null;
   private pathTargetId: string | null = null;
+  /** Node ids of a citation-path highlight (from the chat's "Show in graph"). */
+  private highlightPathIds: string[] | null = null;
   /** The "Clear path" toolbar button (always present, hidden when inactive). */
   private clearPathBtn: HTMLButtonElement | null = null;
+  /** Knowledge growth timeline state (survives the full re-renders). */
+  private timelineActive = false;
+  private timelinePlaying = false;
+  private timelineIndex = 0;
+  private timelineSpeed = 1;
+  private timelineTimes: string[] = [];
+  private timelineTimer: number | null = null;
+  private timelineBar: HTMLElement | null = null;
+  private timelineScrubber: HTMLInputElement | null = null;
+  private timelineLabel: HTMLElement | null = null;
+  private timelinePlayBtn: HTMLButtonElement | null = null;
   private previewEl: HTMLElement | null = null;
   private previewHideTimer: number | null = null;
   /** True while the pointer is over a node; wheel zoom is blocked then. */
@@ -177,6 +190,7 @@ export class GraphView extends ItemView {
 
   async onClose(): Promise<void> {
     this.unsubscribe();
+    this.stopTimelineTimer();
     this.clearPreviewTimer();
     this.resizeObs?.disconnect();
     this.resizeObs = null;
@@ -436,11 +450,13 @@ export class GraphView extends ItemView {
     });
     clearPath.toggleClass(
       "kb-hidden",
-      !(this.pathSourceId && this.pathTargetId),
+      !(this.pathSourceId && this.pathTargetId) &&
+        !(this.highlightPathIds && this.highlightPathIds.length > 0),
     );
     clearPath.onclick = () => {
       this.pathSourceId = null;
       this.pathTargetId = null;
+      this.highlightPathIds = null;
       // Keep the button in the DOM (hidden) — showPathPicker re-shows it on the
       // next highlight. Removing it here would orphan the next highlight with no
       // way to clear it until the whole view re-renders.
@@ -477,6 +493,28 @@ export class GraphView extends ItemView {
       a.click();
       a.remove();
     };
+
+    const timelineBtn = toolbar.createEl("button", {
+      cls: "mod-muted",
+      text: "Timeline",
+      attr: { title: "Animate the graph from the first thought to now" },
+    });
+    timelineBtn.onclick = () => {
+      this.timelineActive = !this.timelineActive;
+      if (!this.timelineActive) {
+        this.stopTimelineTimer();
+        this.timelinePlaying = false;
+      }
+      this.render();
+    };
+
+    // The playback bar sits below the toolbar and only exists while the
+    // timeline is active. Built mid-render it must NOT touch `this.cy` (still
+    // the previous instance) — restoreTimeline() at the end of render() wires
+    // it to the fresh graph.
+    if (this.timelineActive && nodes.length > 0) {
+      this.renderTimelineBar();
+    }
 
     const legend = this.container.createDiv({ cls: "kb-graph-legend" });
     legend.createSpan({ text: "click a node to open" });
@@ -533,6 +571,8 @@ export class GraphView extends ItemView {
           question_type: n.question_type,
           content: n.content,
           degree: degrees.get(n.id) ?? 0,
+          created_at: n.created_at,
+          updated_at: n.updated_at,
         },
       })),
       ...edges.map((e) => ({
@@ -625,6 +665,18 @@ export class GraphView extends ItemView {
             opacity: 0.12,
           },
         },
+        {
+          selector: "node.kb-hidden",
+          style: {
+            display: "none",
+          },
+        },
+        {
+          selector: "edge.kb-hidden",
+          style: {
+            display: "none",
+          },
+        },
       ],
       wheelSensitivity: 0.2,
     });
@@ -666,6 +718,11 @@ export class GraphView extends ItemView {
     }
     this.observeCanvas(canvas);
     this.applyPathHighlight();
+    // Re-apply the timeline to the fresh graph (render() rebuilt everything).
+    // Runs last so hidden nodes never influence layout/centering above.
+    if (this.timelineActive) {
+      this.restoreTimeline();
+    }
 
     cy.on("tap", "node", (evt) => {
       this.openThought((evt.target as cytoscape.NodeSingular).id());
@@ -872,22 +929,22 @@ export class GraphView extends ItemView {
     this.cy
       .elements()
       .removeClass("kb-graph-focus kb-path-node kb-path-edge kb-dimmed");
-    const { nodes, edges } = this.computeFilteredGraph(this.kb.getGraph(true));
+    const { nodes } = this.computeFilteredGraph(this.kb.getGraph(true));
     if (this.neighborhoodDepth > 0) {
       const focus = this.currentFocus();
       if (focus && nodes.some((n) => n.id === focus)) {
         this.cy.getElementById(focus).addClass("kb-graph-focus");
       }
     }
-    if (!this.pathSourceId || !this.pathTargetId) {
+    const pathResult = this.currentPath();
+    if (!pathResult || pathResult.path.length === 0) {
       return;
     }
-    const path = findShortestPath(this.pathSourceId, this.pathTargetId, edges);
-    if (!path) {
-      return;
-    }
+    const { path, edges } = pathResult;
     if (path.length === 1) {
-      this.cy.getElementById(this.pathSourceId).addClass("kb-path-node");
+      if (this.cy.getElementById(path[0]).length > 0) {
+        this.cy.getElementById(path[0]).addClass("kb-path-node");
+      }
       return;
     }
     const pathSet = new Set(path);
@@ -912,9 +969,230 @@ export class GraphView extends ItemView {
     });
   }
 
+  /**
+   * The path to highlight: the citation chain when one is set (chained over the
+   * FULL default-folder graph, so cited thoughts connect even through
+   * filtered-out intermediaries), else the manual picker's shortest path over
+   * the currently visible edges. Only classes on elements that exist in `cy`
+   * have any effect, so filtered-out ids are inert.
+   */
+  private currentPath(): { path: string[]; edges: ThoughtLink[] } | null {
+    if (this.highlightPathIds && this.highlightPathIds.length > 0) {
+      const full = this.kb.getGraph(true);
+      return {
+        path: buildContinuousPath(this.highlightPathIds, full.edges),
+        edges: full.edges,
+      };
+    }
+    if (!this.pathSourceId || !this.pathTargetId) {
+      return null;
+    }
+    const { edges } = this.computeFilteredGraph(this.kb.getGraph(true));
+    return {
+      path: findShortestPath(this.pathSourceId, this.pathTargetId, edges) ?? [],
+      edges,
+    };
+  }
+
+  /**
+   * Highlight a concrete set of node ids (e.g. thoughts the chat cited),
+   * chaining shortest paths between them over the full default-folder graph.
+   * If a cited node is not currently rendered, the view expands (clears
+   * status/tag/neighborhood filters) so a citation can never silently fail to
+   * highlight.
+   */
+  highlightPath(ids: string[]): void {
+    if (!this.cy) {
+      this.highlightPathIds = ids.length > 0 ? ids : null;
+      return;
+    }
+    const full = this.kb.getGraph(true);
+    const present = new Set(full.nodes.map((n) => n.id));
+    const kept = ids.filter((id) => present.has(id));
+    if (kept.length === 0) {
+      return;
+    }
+    this.highlightPathIds = kept;
+    const visible = new Set(this.cy.nodes().map((n) => n.id()));
+    if (kept.some((id) => !visible.has(id))) {
+      this.statusFilter = "";
+      this.tagFilter = "";
+      this.neighborhoodDepth = 0;
+      this.focusId = null;
+      this.render();
+    } else {
+      this.applyPathHighlight();
+    }
+    if (this.clearPathBtn) {
+      this.clearPathBtn.removeClass("kb-hidden");
+    }
+    const eles = this.cy.getElementById(kept.join(","));
+    if (eles.length > 0) {
+      this.cy.fit(eles, 50);
+    }
+  }
+
+  /** Build the playback bar (play, reset, scrubber, date, speed). */
+  private renderTimelineBar(): void {
+    const bar = this.container.createDiv({ cls: "kb-graph-timeline" });
+    this.timelineBar = bar;
+
+    const play = bar.createEl("button", {
+      cls: "mod-muted",
+      text: "Play",
+      attr: { title: "Play the growth animation" },
+    });
+    this.timelinePlayBtn = play;
+
+    const reset = bar.createEl("button", {
+      cls: "mod-muted",
+      text: "↺",
+      attr: { title: "Restart from the first thought" },
+    });
+
+    const scrubber = bar.createEl("input", {
+      cls: "kb-timeline-scrubber",
+      attr: { type: "range", min: "0", max: "0", step: "1", value: "0" },
+    });
+    this.timelineScrubber = scrubber;
+
+    const label = bar.createSpan({ cls: "kb-timeline-date", text: "" });
+    this.timelineLabel = label;
+
+    const speed = bar.createEl("select");
+    speed.addClass("kb-graph-filter");
+    for (const v of [0.5, 1, 2]) {
+      speed.createEl("option", { text: `${v}×`, attr: { value: String(v) } });
+    }
+    speed.value = String(this.timelineSpeed);
+
+    play.onclick = () => this.toggleTimelinePlay();
+    reset.onclick = () => {
+      this.timelineIndex = 0;
+      this.timelinePlaying = false;
+      this.applyTimeline();
+      this.updateTimelineUi();
+    };
+    scrubber.oninput = () => {
+      this.timelinePlaying = false;
+      this.timelineIndex = Number(scrubber.value);
+      this.applyTimeline();
+      this.updateTimelineUi();
+    };
+    speed.onchange = () => {
+      this.timelineSpeed = Number(speed.value);
+      if (this.timelinePlaying) {
+        this.restartTimelineTimer();
+      }
+    };
+  }
+
+  private toggleTimelinePlay(): void {
+    if (this.timelinePlaying) {
+      this.stopTimelineTimer();
+      this.timelinePlaying = false;
+      this.updateTimelineUi();
+      return;
+    }
+    if (this.timelineTimes.length <= 1) {
+      return;
+    }
+    if (this.timelineIndex >= this.timelineTimes.length - 1) {
+      this.timelineIndex = 0;
+    }
+    this.timelinePlaying = true;
+    this.updateTimelineUi();
+    this.restartTimelineTimer();
+  }
+
+  private restartTimelineTimer(): void {
+    this.stopTimelineTimer();
+    const interval = Math.max(120, 800 / this.timelineSpeed);
+    this.timelineTimer = window.setInterval(() => {
+      if (this.timelineIndex >= this.timelineTimes.length - 1) {
+        this.stopTimelineTimer();
+        this.timelinePlaying = false;
+        this.updateTimelineUi();
+        return;
+      }
+      this.timelineIndex++;
+      this.applyTimeline();
+      this.updateTimelineUi();
+    }, interval);
+  }
+
+  private stopTimelineTimer(): void {
+    if (this.timelineTimer !== null) {
+      window.clearInterval(this.timelineTimer);
+      this.timelineTimer = null;
+    }
+  }
+
+  /** Recompute the step list from the CURRENT graph, clamp the index, apply. */
+  private restoreTimeline(): void {
+    if (!this.cy) {
+      return;
+    }
+    const times = new Set<string>();
+    this.cy.nodes().forEach((n) => {
+      const t = n.data("created_at");
+      if (t) {
+        times.add(String(t));
+      }
+    });
+    this.timelineTimes = [...times].sort(
+      (a, b) => new Date(a).getTime() - new Date(b).getTime(),
+    );
+    if (this.timelineIndex >= this.timelineTimes.length) {
+      this.timelineIndex = Math.max(0, this.timelineTimes.length - 1);
+    }
+    this.applyTimeline();
+    this.updateTimelineUi();
+  }
+
+  /** Hide nodes created after the cursor and edges touching a hidden node. */
+  private applyTimeline(): void {
+    if (!this.cy || this.timelineTimes.length === 0) {
+      return;
+    }
+    const cursor = new Date(this.timelineTimes[this.timelineIndex]).getTime();
+    const hidden = new Set<string>();
+    this.cy.nodes().forEach((n) => {
+      const t = n.data("created_at");
+      const ms = t ? new Date(String(t)).getTime() : Number.NEGATIVE_INFINITY;
+      const h = Number.isFinite(ms) && ms > cursor;
+      if (h) {
+        hidden.add(n.id());
+      }
+      n.toggleClass("kb-hidden", h);
+    });
+    this.cy.edges().forEach((e) => {
+      e.toggleClass(
+        "kb-hidden",
+        hidden.has(String(e.data("source"))) || hidden.has(String(e.data("target"))),
+      );
+    });
+  }
+
+  private updateTimelineUi(): void {
+    if (this.timelineScrubber) {
+      this.timelineScrubber.max = String(Math.max(0, this.timelineTimes.length - 1));
+      this.timelineScrubber.value = String(this.timelineIndex);
+    }
+    if (this.timelineLabel) {
+      const t = this.timelineTimes[this.timelineIndex];
+      this.timelineLabel.setText(t ? new Date(t).toLocaleDateString() : "");
+    }
+    if (this.timelinePlayBtn) {
+      this.timelinePlayBtn.setText(this.timelinePlaying ? "Pause" : "Play");
+      this.timelinePlayBtn.disabled = this.timelineTimes.length <= 1;
+    }
+  }
+
   /** Open the modal that picks the two endpoints of the path to highlight. */
   private showPathPicker(): void {
     new PathPickerModal(this.app, this.kb, (source, target) => {
+      this.highlightPathIds = null;
       this.pathSourceId = source;
       this.pathTargetId = target;
       if (this.clearPathBtn) {

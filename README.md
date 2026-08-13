@@ -2,6 +2,8 @@
 
 An [Obsidian](https://obsidian.md) plugin that turns your markdown notes into a connected **knowledge graph** — a directed acyclic graph (DAG) of *thoughts* — with a built-in **streaming AI chat** (DeepSeek / OpenAI / Gemini / Claude) that can suggest tags, statuses, links, follow-up questions, and even turn chat answers into new notes.
 
+The chat is **grounded in your graph**: it finds the notes most relevant to your question, cites them inline, and can highlight the **path your answer took through your knowledge graph** — a capability no other Obsidian AI plugin has.
+
 > Any markdown note in your vault is already a thought. The plugin reads standard YAML frontmatter, so your knowledge base stays plain, portable markdown.
 
 **Author:** [Kerekes Stefan](https://github.com/Stef4678) · **Version:** 0.4.1 · Desktop only
@@ -33,6 +35,15 @@ An [Obsidian](https://obsidian.md) plugin that turns your markdown notes into a 
 <br />
 <img width="700" alt="Screenshot 2026-08-10 181157" src="https://github.com/user-attachments/assets/8d4dbbb4-dd4b-49ca-8ba3-ab12b1453a69" />
 
+### 🧭 Ask the graph — chat grounded in your knowledge
+**What makes Knowledge Brain different:** instead of answering from general knowledge, the chat pulls in your *actual notes* for every question and can show you the reasoning path through them.
+
+- Every message auto-retrieves the **most relevant thoughts** for your question (local BM25 — private, no embeddings, no extra API cost) and hands them to the model as numbered context.
+- The model **cites your notes inline** as `[n]` — answers point at real thoughts, not hallucinated sources.
+- Each answer gets a **"Used thoughts"** row: clickable chips that open the cited notes, plus a **Show in graph** action.
+- **Show in graph** opens the graph view with the **traversal path between the cited thoughts highlighted** — you can see exactly which chain of ideas your answer drew on.
+- Retrieval is a setting, **on by default** (*Settings → Chat context retrieval*); tune how many candidate thoughts the model sees (*Retrieved thoughts per message*).
+
 ### 🧠 Thoughts as plain markdown
 - Every markdown note is a *thought*, indexed live from your vault (create, edit, rename, delete — the index follows automatically).
 - Thoughts link to each other through a `parents` list in frontmatter, forming a **directed acyclic graph** — the plugin validates links and refuses cycles, self-links, and duplicates.
@@ -45,6 +56,7 @@ An [Obsidian](https://obsidian.md) plugin that turns your markdown notes into a 
 - Filter by **status** or **tag**, adjust **node spacing** with a slider (persisted in settings).
 - **Neighborhood view**: show only the notes within 1–3 hops of a thought, centered on the active note (or a thought you pick).
 - **Path highlighting**: pick two thoughts and the shortest connecting path is highlighted, with the rest dimmed.
+- **Knowledge growth timeline**: replay the growth of your knowledge — play animates nodes/edges appearing in `created_at` order, with a scrubber, a live date label, and speed control. Composes with the status/tag/neighborhood filters.
 - Hover a node for a preview tooltip (title, status, type, tags, content); click to open the note.
 - Right-click a node for AI **tag suggestions**, AI **status suggestions**, or delete.
 - **Statistics** modal: totals, links, breakdown by thought type and follow-up groups.
@@ -67,11 +79,12 @@ An [Obsidian](https://obsidian.md) plugin that turns your markdown notes into a 
 - **Backlinks** — thoughts that link to the active note (with edge labels).
 - **Siblings** — thoughts that share a parent with the active note.
 - **Follow-ups** — generated questions for the active note.
-- Optionally **combine all three into a single sidebar tab** (setting), or keep them as separate panes.
+- **Orphan radar** — thoughts with no parent (roots that nothing links up to), with one-click AI **Suggest link** that proposes a specific-to-general chain of parents (e.g. *Cats* → *Cat-like carnivores* → *Carnivores* → *Mammals* → *Animals*). It never suggests the thought's own topic as a parent, and Latin taxonomic ranks come with their English name, e.g. *Felidae (cats)*. **Link as hierarchy** files the orphan under the most specific parent and chains each level under the next, creating the missing parent notes; every suggestion is copyable. Also surfaces the active note's **unanswered** follow-up questions.
+- Optionally **combine the backlinks/siblings/follow-ups panes into a single sidebar tab** (setting), or keep them as separate panes. The orphan radar stays its own pane.
 
 ### 🔍 Local search & retrieval
 - **BM25 full-text search** over all thoughts (memoized index, rebuilt on change) with English **and Romanian** stopword handling.
-- Used both for the search modal and to retrieve relevant thoughts as context for AI operations — cheap and private, no embeddings API needed.
+- Powers the search modal, AI operation context, and the chat's automatic thought retrieval — cheap and private, no embeddings API needed.
 
 ### 🤖 AI-assisted organization
 - **Suggest tags** and **suggest status** for a thought (toggleable in settings).
@@ -85,6 +98,7 @@ An [Obsidian](https://obsidian.md) plugin that turns your markdown notes into a 
 | Open knowledge brain graph | Opens the graph view |
 | Open knowledge brain chat | Opens the chat view |
 | Open knowledge brain follow-up questions / backlinks / siblings | Opens the sidebar panes |
+| Open knowledge brain orphan radar | Opens the orphan radar pane (orphans + unanswered follow-ups) |
 | Set chat context to current note | Pins the active note as chat context |
 | Create new thought | Modal to create a titled thought with parents, tags, status |
 | Search knowledge brain thoughts | BM25 search modal |
@@ -152,6 +166,8 @@ The body of the note is the thought's content — free-form markdown.
 | Tag word separator | `-` | `machine-learning` vs `machine_learning` |
 | AI tag / status suggestions | on | Hides the corresponding menu items when off |
 | Combined sidebar pane | off | One tab vs. three separate tabs |
+| Chat context retrieval | on | Grounds chat answers in related thoughts (cited inline as [n]) |
+| Retrieved thoughts per message | 8 | 2–16 candidates the model can cite |
 | Follow-up groups | all on | Per-type toggles + 1–5 questions per group |
 
 ## Development
@@ -170,7 +186,6 @@ Potential future improvements include:
 
 - **OpenAI-compatible endpoint support** — custom base URL + key, unlocking local models (LM Studio, Ollama) and alternative providers (Mistral, Groq, OpenRouter) with one code path
 - **Canvas / Excalidraw export** — render the thought graph as an Obsidian Canvas file for presentations and sharing
-- **Chat with multiple thoughts as context** — pin several notes, not just one; auto-retrieve top-k relevant thoughts via BM25 as chat context (RAG-lite)
 - **Graph import/export** — JSON dump/restore of nodes, edges, and metadata for backups and migration (the logic already exists internally)
 
 ## Privacy

@@ -4,9 +4,10 @@ import {
   type Suggestion,
   type TitleSuggestion,
 } from "./ai";
+import { parseCitations, type Citation } from "./citations";
 import { addCopyableSuggestion, copyToClipboard } from "./copyRow";
 import { streamChat, type ChatMessage } from "./deepseek";
-import { KnowledgeBase, sanitizeTitle } from "./knowledgeBase";
+import { kbLine, KnowledgeBase, sanitizeTitle } from "./knowledgeBase";
 import type { PluginSettings, Thought } from "./types";
 
 export const CHAT_VIEW_TYPE = "knowledge-brain-chat";
@@ -41,6 +42,10 @@ interface Exchange {
   error?: string;
   /** Question type carried from a clicked follow-up, applied when saving. */
   type?: string;
+  /** The numbered retrieved thoughts the model saw as citation candidates. */
+  retrieved?: Array<{ id: string; title: string }>;
+  /** The thoughts the model actually cited as inline [n] markers. */
+  citations?: Citation[];
 }
 
 export class ChatView extends ItemView {
@@ -62,17 +67,23 @@ export class ChatView extends ItemView {
   private pendingType = "";
   /** Titles currently being created from a suggestion; guards duplicate clicks. */
   private savingTitles = new Set<string>();
+  /** The retrieved thought set for the in-flight exchange (citation lookup). */
+  private lastRetrieved: Array<{ id: string; title: string }> = [];
+  /** Bridge to the graph view: "Show in graph" highlights the cited path. */
+  private onShowInGraph: (ids: string[]) => void;
 
   constructor(
     leaf: WorkspaceLeaf,
     kb: KnowledgeBase,
     ai: AiService,
     getSettings: () => PluginSettings,
+    onShowInGraph: (ids: string[]) => void,
   ) {
     super(leaf);
     this.kb = kb;
     this.ai = ai;
     this.getSettings = getSettings;
+    this.onShowInGraph = onShowInGraph;
   }
 
   getViewType(): string {
@@ -208,6 +219,7 @@ export class ChatView extends ItemView {
             "",
             this,
           );
+          this.renderCitations(ex, wrap);
         }
       }
       if (ex.status !== "streaming" && ex.content.trim()) {
@@ -282,7 +294,7 @@ export class ChatView extends ItemView {
     }
   }
 
-  private buildSystemMessages(prompt: string): ChatMessage[] {
+  private buildSystemMessages(prompt: string, retrieved: Thought[]): ChatMessage[] {
     const messages: ChatMessage[] = [
       {
         role: "system",
@@ -292,6 +304,21 @@ export class ChatView extends ItemView {
           "siblings). Answer clearly and conversationally. Use Markdown when helpful.",
       },
     ];
+    // Ground the answer in the knowledge graph: hand the model the retrieved
+    // thoughts as numbered citation candidates, and ask for inline [n] markers.
+    if (retrieved.length > 0) {
+      const lines = retrieved.map((t, i) => `[${i + 1}] ${kbLine(t)}`).join("\n");
+      messages.push({
+        role: "system",
+        content:
+          "The following thoughts from the user's knowledge base may help you " +
+          "answer. If you use one, cite it inline with its bracket number right " +
+          "after the relevant claim, e.g. [3]. Only cite thoughts listed above, " +
+          "and only ones you actually used. If none are relevant, answer from " +
+          "your own knowledge.\n\n" +
+          lines,
+      });
+    }
     if (this.contextThought) {
       const thought = this.contextThought;
       let context = `The user is currently working on the thought:\n\nTitle: ${thought.title}`;
@@ -313,11 +340,22 @@ export class ChatView extends ItemView {
     this.inputEl.value = "";
     const settings = this.getSettings();
 
+    // Ground the answer in the knowledge graph: retrieve the top-K related
+    // thoughts (local BM25, no API call) and expose them as citation candidates.
+    let retrieved: Thought[] = [];
+    if (settings.chatRetrieval) {
+      retrieved = this.ai
+        .retrieve(prompt, settings.chatRetrievalK)
+        .filter((t) => t.id !== this.contextThought?.id);
+    }
+    this.lastRetrieved = retrieved.map((t) => ({ id: t.id, title: t.title }));
+
     const ex: Exchange = {
       role: "assistant",
       content: "",
       reasoning: "",
       status: "streaming",
+      retrieved: this.lastRetrieved,
     };
     this.exchanges.push({
       role: "user",
@@ -334,7 +372,7 @@ export class ChatView extends ItemView {
 
     try {
       await streamChat(
-        this.buildSystemMessages(prompt),
+        this.buildSystemMessages(prompt, retrieved),
         {
           apiKey: settings.apiKey,
           model: settings.model,
@@ -351,6 +389,7 @@ export class ChatView extends ItemView {
             this.updateLive(ex);
           } else if (event.type === "done") {
             ex.status = "done";
+            ex.citations = parseCitations(ex.content, this.lastRetrieved);
             this.streaming = false;
             this.liveWrap = null;
             this.liveBubble = null;
@@ -535,6 +574,48 @@ export class ChatView extends ItemView {
     if (file instanceof TFile) {
       void this.app.workspace.getLeaf(false).openFile(file);
     }
+  }
+
+  /** Open a cited thought's note without navigating the chat tab away. */
+  private openCitation(id: string): void {
+    const rec = this.kb.getRecord(id);
+    if (!rec) {
+      return;
+    }
+    const file = this.app.vault.getAbstractFileByPath(rec.path);
+    if (file instanceof TFile) {
+      void this.app.workspace.getLeaf("tab").openFile(file);
+    }
+  }
+
+  /**
+   * "Used thoughts" row under a finished answer: one clickable chip per cited
+   * thought, plus a "Show in graph" action that highlights the path between
+   * them in the graph view.
+   */
+  private renderCitations(ex: Exchange, wrap: HTMLElement): void {
+    if (!ex.citations || ex.citations.length === 0) {
+      return;
+    }
+    const row = wrap.createDiv({ cls: "kb-chat-citations" });
+    row.createSpan({ cls: "kb-chat-citations-label", text: "Used thoughts:" });
+    for (const c of ex.citations) {
+      const chip = row.createEl("button", {
+        cls: "kb-chip kb-citation-chip",
+        text: c.title,
+      });
+      chip.onclick = () => this.openCitation(c.id);
+    }
+    const show = row.createEl("button", {
+      cls: "mod-muted kb-chat-show-path",
+      text: "Show in graph",
+      attr: { title: "Highlight the path between these thoughts in the graph" },
+    });
+    show.onclick = () => {
+      if (ex.citations) {
+        this.onShowInGraph(ex.citations.map((c) => c.id));
+      }
+    };
   }
 
   private async suggestTitleFor(ex: Exchange): Promise<void> {

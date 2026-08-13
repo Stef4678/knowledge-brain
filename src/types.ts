@@ -85,6 +85,10 @@ export interface PluginSettings {
   enableAiStatus: boolean;
   /** Show backlinks and siblings in one combined right-sidebar tab. */
   combineSidebarPanes: boolean;
+  /** Ground chat answers in the knowledge graph: retrieve related thoughts into the prompt. */
+  chatRetrieval: boolean;
+  /** How many related thoughts are fed to the model as citation candidates. */
+  chatRetrievalK: number;
   /** Number of follow-up questions per enabled group. */
   followupCount: number;
   /** Which follow-up question groups are enabled. */

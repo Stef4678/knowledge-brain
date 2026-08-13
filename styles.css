@@ -565,3 +565,154 @@
   white-space: normal;
   overflow-wrap: break-word;
 }
+
+/* Chat citations row ("Used thoughts:" + chips + Show in graph). */
+
+.kb-chat-citations {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.kb-chat-citations-label {
+  font-size: 0.8em;
+  color: var(--text-muted);
+}
+
+.kb-citation-chip {
+  cursor: pointer;
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.kb-citation-chip:hover {
+  background: var(--background-modifier-hover);
+}
+
+.kb-chat-show-path {
+  margin-left: auto;
+}
+
+/* Graph growth timeline playback bar. */
+
+.kb-graph-view .kb-graph-timeline {
+  position: absolute;
+  bottom: 12px;
+  right: 12px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: var(--background-secondary-alt);
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.kb-graph-view .kb-timeline-scrubber {
+  width: 180px;
+}
+
+.kb-timeline-date {
+  min-width: 120px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Orphan radar pane. */
+
+.kb-orphan-view {
+  padding: 10px 12px;
+}
+
+.kb-orphan-section {
+  margin-bottom: 14px;
+}
+
+.kb-orphan-header {
+  margin-bottom: 8px;
+  font-size: 0.9em;
+  color: var(--text-normal);
+}
+
+.kb-orphan-header span + span {
+  color: var(--text-muted);
+  margin-left: 4px;
+}
+
+.kb-orphan-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--background-secondary-alt);
+  margin-bottom: 4px;
+}
+
+.kb-orphan-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 0.9em;
+  color: var(--text-normal);
+  text-align: left;
+  cursor: pointer;
+}
+
+.kb-orphan-date {
+  font-size: 0.75em;
+  color: var(--text-muted);
+}
+
+.kb-orphan-hint {
+  color: var(--text-muted);
+  font-size: 0.9em;
+  padding-top: 4px;
+}
+
+.kb-orphan-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  margin-top: 4px;
+}
+
+.kb-orphan-actions .kb-suggestion {
+  text-align: left;
+  font-size: 0.85em;
+  line-height: 1.5;
+  padding: 5px 8px;
+  white-space: normal;
+  overflow-wrap: break-word;
+}
+
+.kb-orphan-actions .kb-copy-row {
+  margin: 2px 0;
+}
+
+.kb-orphan-suggest-title {
+  display: block;
+}
+
+.kb-orphan-suggest-reason {
+  display: block;
+  margin-top: 2px;
+  font-size: 0.9em;
+  color: var(--text-muted);
+  white-space: normal;
+  overflow-wrap: break-word;
+}
+

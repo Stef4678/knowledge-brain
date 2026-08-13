@@ -5,7 +5,8 @@
 import { KnowledgeBase, sanitizeTitle } from "../src/knowledgeBase";
 import { QUESTION_TYPES } from "../src/types";
 import { buildBm25Index, findSimilarPairs, tokenCosine } from "../src/bm25";
-import { findShortestPath, neighborhoodIds } from "../src/graphAlgos";
+import { buildContinuousPath, findShortestPath, neighborhoodIds } from "../src/graphAlgos";
+import { parseCitations } from "../src/citations";
 import { FakeVault, fakeApp } from "./obsidian-stub";
 
 let failures = 0;
@@ -440,6 +441,99 @@ async function main(): Promise<void> {
     check(
       "shortest path disconnected → null",
       findShortestPath("A", "Z", edges) === null,
+    );
+    check(
+      "continuous path chains segments",
+      buildContinuousPath(["A", "D"], edges).join() === "A,B,C,D",
+      buildContinuousPath(["A", "D"], edges),
+    );
+    check(
+      "continuous path keeps every cited node even when disconnected",
+      buildContinuousPath(["A", "Z"], edges).join() === "A,Z",
+      buildContinuousPath(["A", "Z"], edges),
+    );
+    check(
+      "continuous path across three cited nodes",
+      buildContinuousPath(["A", "D", "C"], edges).join() === "A,B,C,D,C",
+      buildContinuousPath(["A", "D", "C"], edges),
+    );
+    check(
+      "continuous path single id",
+      buildContinuousPath(["C"], edges).join() === "C",
+    );
+    check("continuous path empty", buildContinuousPath([], edges).join() === "");
+  }
+
+  // ------------------------------------------------------------ citations
+  {
+    const retrieved = [
+      { id: "React", title: "React" },
+      { id: "Vue", title: "Vue" },
+      { id: "Svelte", title: "Svelte" },
+    ];
+    check(
+      "citations: resolves valid numbers, deduped in first-appearance order",
+      parseCitations("React uses a virtual DOM [1]. Vue too [2]. Again [1].", retrieved)
+        .map((c) => c.id)
+        .join() === "React,Vue",
+      parseCitations("React uses a virtual DOM [1]. Vue too [2]. Again [1].", retrieved),
+    );
+    check(
+      "citations: out-of-range numbers dropped",
+      parseCitations("Something [9].", retrieved).length === 0,
+    );
+    check(
+      "citations: ignores markdown link text",
+      parseCitations("See [1](https://example.com).", retrieved).length === 0,
+    );
+    check("citations: empty content → []", parseCitations("", retrieved).length === 0);
+    check("citations: no retrieved → []", parseCitations("[1]", []).length === 0);
+  }
+
+  // -------------------------------------------------- updateThought parents
+  {
+    // Orphan.md carries a stale parent label for "Root" (plus an unused
+    // "Stale" label) but no parents — the label cache the prune cleans up.
+    const vault = new FakeVault();
+    vault.set("Root.md", "---\n---\n\nRoot body");
+    vault.set(
+      "Orphan.md",
+      "---\nparent_labels:\n  Root: 'Root'\n  Stale: 'Stale'\n---\n\nOrphan body",
+    );
+    const kb = new KnowledgeBase(fakeApp(vault) as never);
+    await kb.load();
+
+    check("orphan has no parents", kb.getRecord("Orphan")!.parents.length === 0);
+
+    await kb.updateThought("Orphan", { parents: ["Root"] });
+    const orphan = kb.getRecord("Orphan")!;
+    check("updateThought sets parents", orphan.parents.join() === "Root", orphan.parents);
+    check(
+      "childrenOf(Root) sees Orphan",
+      kb.childrenOf("Root").map((r) => r.id).join() === "Orphan",
+    );
+    check(
+      "parentLabels pruned to current parents",
+      Object.keys(orphan.parentLabels).sort().join() === "Root",
+      orphan.parentLabels,
+    );
+
+    let cycleRejected = false;
+    try {
+      await kb.updateThought("Root", { parents: ["Orphan"] });
+    } catch {
+      cycleRejected = true;
+    }
+    check("updateThought rejects cycle", cycleRejected);
+    check(
+      "Root unchanged after rejected cycle",
+      kb.getRecord("Root")!.parents.length === 0,
+    );
+
+    await kb.updateThought("Orphan", { parents: [] });
+    check(
+      "updateThought clears parents back to root",
+      kb.getRecord("Orphan")!.parents.length === 0 && kb.childrenOf("Root").length === 0,
     );
   }
 

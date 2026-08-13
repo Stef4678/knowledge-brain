@@ -79,6 +79,8 @@ export const DEFAULT_SETTINGS: PluginSettings = {
   enableAiTags: true,
   enableAiStatus: true,
   combineSidebarPanes: false,
+  chatRetrieval: true,
+  chatRetrievalK: 8,
   followupCount: 2,
   followupGroups: Object.fromEntries(
     QUESTION_TYPES.map((q) => [q, true]),
@@ -150,8 +152,8 @@ export class KnowledgeBrainSettingsTab extends PluginSettingTab {
 
   /** Read a control's value from the live settings object (Obsidian 1.13+). */
   getControlValue(key: string): unknown {
-    if (key === "followupCount") {
-      return String(this.settings.followupCount);
+    if (key === "followupCount" || key === "chatRetrievalK") {
+      return String(this.settings[key]);
     }
     return (this.settings as unknown as Record<string, unknown>)[key];
   }
@@ -162,8 +164,8 @@ export class KnowledgeBrainSettingsTab extends PluginSettingTab {
       this.handleProviderChange(value as Provider);
       return;
     }
-    if (key === "followupCount") {
-      this.set("followupCount", Number(value));
+    if (key === "followupCount" || key === "chatRetrievalK") {
+      this.set(key, Number(value));
       return;
     }
     this.set(key as keyof PluginSettings, value as PluginSettings[keyof PluginSettings]);
@@ -287,6 +289,20 @@ export class KnowledgeBrainSettingsTab extends PluginSettingTab {
         name: "AI status suggestions",
         desc: "Allow AI to suggest a status for a thought. Off hides the Suggest status option.",
         control: { type: "toggle", key: "enableAiStatus" },
+      },
+      {
+        name: "Chat context retrieval",
+        desc: "Ground chat answers in your knowledge graph: each message auto-retrieves related thoughts into the prompt and the model cites them as [n].",
+        control: { type: "toggle", key: "chatRetrieval" },
+      },
+      {
+        name: "Retrieved thoughts per message",
+        desc: "How many related thoughts are fed to the model as citation candidates.",
+        control: {
+          type: "dropdown",
+          key: "chatRetrievalK",
+          options: Object.fromEntries([2, 4, 6, 8, 12, 16].map((n) => [String(n), String(n)])),
+        },
       },
       {
         name: "Follow-ups, siblings & backlinks in one page",
@@ -563,6 +579,29 @@ export class KnowledgeBrainSettingsTab extends PluginSettingTab {
           this.set("enableAiStatus", value);
         }),
       );
+
+    new Setting(containerEl)
+      .setName("Chat context retrieval")
+      .setDesc(
+        "Ground chat answers in your knowledge graph: each message auto-retrieves related thoughts into the prompt and the model cites them as [n].",
+      )
+      .addToggle((toggle) =>
+        toggle.setValue(this.settings.chatRetrieval).onChange(async (value) => {
+          this.set("chatRetrieval", value);
+        }),
+      );
+
+    new Setting(containerEl)
+      .setName("Retrieved thoughts per message")
+      .setDesc("How many related thoughts are fed to the model as citation candidates.")
+      .addDropdown((dropdown) => {
+        for (const n of [2, 4, 6, 8, 12, 16]) {
+          dropdown.addOption(String(n), `${n}`);
+        }
+        dropdown.setValue(String(this.settings.chatRetrievalK)).onChange(async (value) => {
+          this.set("chatRetrievalK", Number(value));
+        });
+      });
 
     new Setting(containerEl)
       .setName("Follow-ups, siblings & backlinks in one page")

@@ -66,6 +66,7 @@ import { ThoughtSearchModal } from "./searchModal";
 import { THOUGHT_STATUSES } from "./types";
 import { GraphView, GRAPH_VIEW_TYPE } from "./graphView";
 import { ChatView, CHAT_VIEW_TYPE } from "./chatView";
+import { OrphanRadarView, ORPHAN_RADAR_VIEW_TYPE } from "./orphanRadarView";
 import { FollowUpsView, FOLLOWUPS_VIEW_TYPE } from "./followupsView";
 import { BacklinksView, BACKLINKS_VIEW_TYPE } from "./backlinksView";
 import { SiblingsView, SIBLINGS_VIEW_TYPE } from "./siblingsView";
@@ -141,7 +142,21 @@ export default class KnowledgeBrainPlugin extends Plugin {
     );
     this.registerView(
       CHAT_VIEW_TYPE,
-      (leaf) => new ChatView(leaf, this.kb, this.ai, () => this.settings),
+      (leaf) =>
+        new ChatView(leaf, this.kb, this.ai, () => this.settings, (ids) =>
+          void this.openGraphWithPath(ids),
+        ),
+    );
+    this.registerView(
+      ORPHAN_RADAR_VIEW_TYPE,
+      (leaf) =>
+        new OrphanRadarView(
+          leaf,
+          this.kb,
+          this.ai,
+          () => this.settings,
+          (thought, question, type) => this.askFollowup(thought, question, type),
+        ),
     );
     this.registerView(BACKLINKS_VIEW_TYPE, (leaf) => new BacklinksView(leaf, this.kb));
     this.registerView(SIBLINGS_VIEW_TYPE, (leaf) => new SiblingsView(leaf, this.kb));
@@ -213,6 +228,11 @@ export default class KnowledgeBrainPlugin extends Plugin {
       id: "open-siblings",
       name: "Open siblings",
       callback: () => void this.openSiblingsPane(true),
+    });
+    this.addCommand({
+      id: "open-orphan-radar",
+      name: "Open orphan radar",
+      callback: () => void this.openOrphanRadarPane(true),
     });
     this.addCommand({
       id: "set-chat-context",
@@ -340,6 +360,17 @@ export default class KnowledgeBrainPlugin extends Plugin {
     return leaves.length ? (leaves[0].view as ChatView) : null;
   }
 
+  private getGraphView(): GraphView | null {
+    const leaves = this.app.workspace.getLeavesOfType(GRAPH_VIEW_TYPE);
+    return leaves.length ? (leaves[0].view as GraphView) : null;
+  }
+
+  /** Open the graph and highlight the traversal path between the given nodes. */
+  private async openGraphWithPath(ids: string[]): Promise<void> {
+    await this.activateView(GRAPH_VIEW_TYPE);
+    this.getGraphView()?.highlightPath(ids);
+  }
+
   /** Follow-ups currently shown in whichever pane rendered them (or null). */
   private getFollowupGroups(): Record<FollowupGroup, FollowupQuestion[]> | null {
     const fu = this.app.workspace.getLeavesOfType(FOLLOWUPS_VIEW_TYPE)[0]?.view;
@@ -398,6 +429,11 @@ export default class KnowledgeBrainPlugin extends Plugin {
     if (this.app.workspace.getLeavesOfType(type).length > 0) {
       void this.ensurePaneInRightDock(type, false);
     }
+  }
+
+  /** Orphan radar is a standalone pane — never merged into the combined tab. */
+  private openOrphanRadarPane(reveal = false): Promise<void> {
+    return this.ensurePaneInRightDock(ORPHAN_RADAR_VIEW_TYPE, reveal);
   }
 
   private openFollowupsPane(reveal = false): Promise<void> {

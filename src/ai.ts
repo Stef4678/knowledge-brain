@@ -14,6 +14,8 @@ export interface Suggestion {
   parent_id: string | null;
   parent_title: string | null;
   reason: string;
+  /** When parent_id is null, a proposed title for a NEW parent note. */
+  new_parent_title?: string | null;
 }
 
 export interface TitleSuggestion {
@@ -84,14 +86,19 @@ export class AiService {
   // ------------------------------------------------------------- ops
 
   /**
-   * Choose up to 3 existing thoughts a new thought could be linked under as
-   * parents. Port of POST /api/chat/suggest-link.
+   * Suggest parents a new thought could be linked under. By default this
+   * returns up to 3 existing thoughts (ranked best first), or a single new
+   * parent proposal when no existing thought fits. With opts.hierarchy (the
+   * orphan radar), it returns a mix of existing and new parents forming a
+   * specific-to-general chain — a taxonomy like "Cats" under "Cat-like
+   * carnivores", "Carnivores", "Mammals", "Animals". Port of POST
+   * /api/chat/suggest-link.
    */
   async suggestParents(
     title: string,
     content: string,
     settings: PluginSettings,
-    opts: { prompt?: string; childId?: string } = {},
+    opts: { prompt?: string; childId?: string; hierarchy?: boolean } = {},
   ): Promise<Suggestion[]> {
     let thoughts = this.retrieve(`${title} ${content}`, 25);
     if (opts.childId) {
@@ -105,10 +112,29 @@ export class AiService {
     if (opts.prompt) {
       user_parts.push(`It came from this chat prompt: ${opts.prompt}`);
     }
+    if (opts.hierarchy) {
+      user_parts.push(
+        "Suggest up to 4 parents that form a specific-to-general chain for " +
+          'this thought, like a taxonomy — for "Cats" that would be "Cat-like ' +
+          'carnivores", "Carnivores", "Mammals", "Animals". Use existing ' +
+          "thoughts where they fit; set parent_id to null with a " +
+          "new_parent_title for levels that don't exist yet. Order them from " +
+          "most specific to most general. When a parent is a Latin taxonomic " +
+          'rank, write its title as "Latin (English)", e.g. "Felidae (cats)", ' +
+          '"Carnivora (carnivores)", "Mammalia (mammals)".',
+      );
+    } else {
+      user_parts.push(
+        "Choose up to 3 existing thoughts this new thought could be linked " +
+          "under as parents, ranked best first. If none fit, return a single " +
+          "suggestion with parent_id null and a new_parent_title.",
+      );
+    }
     user_parts.push(
-      "Choose up to 3 existing thoughts this new thought could be linked under " +
-        "as parents, ranked best first. Use null for a new root thought if nothing " +
-        "fits or the best fit is not listed.",
+      "The parent must be a distinct topic: never a note that is essentially " +
+        "the same subject as the new thought itself (for example, do not file " +
+        '"Life" under "Life" or "Life:Overview"). Prefer a broader category or ' +
+        "a clearly related but different thought.",
     );
     user_parts.push(
       "Most relevant existing thoughts (subset):\n" +
@@ -120,14 +146,28 @@ export class AiService {
         role: "system",
         content:
           "You are organizing a personal knowledge base where thoughts form a " +
-          "tree: each thought has a parent (or is a root). Given a new thought " +
-          "and a list of the most relevant existing thoughts, return up to 3 " +
-          "existing thoughts it could be linked under as parents, ranked best " +
-          "first. Return JSON exactly of the form: " +
-          '{"suggestions": [{"parent_id": <an existing thought id or null>, "reason": "..."}]} ' +
-          "Each reason is one or two sentences. If no existing thought is a good " +
-          "fit, return a single suggestion with parent_id null to make it a new " +
-          "root thought.",
+          "tree: each thought can have one or more parents (roots have none). " +
+          "Given a new thought and the most relevant existing thoughts, suggest " +
+          "parent thoughts. Return JSON exactly of the form: " +
+          '{"suggestions": [{"parent_id": <an existing thought id or null>, "reason": "...", "new_parent_title": <a short title or null>}]} ' +
+          "Each reason is one or two sentences. A parent must be a genuinely " +
+          "different topic than the thought itself: never its own title or a " +
+          'same-subject variant (e.g. not "Life" for "Life", not "Life:Overview" ' +
+          'for "Life"). When parent_id is null, set new_parent_title to a ' +
+          "short, specific title for a NEW parent note this thought would " +
+          "belong under — a distinct, broader topic; when parent_id is an " +
+          "existing thought, set new_parent_title to null. If a new parent " +
+          "title is a Latin taxonomic rank, append the common English name in " +
+          'parentheses, e.g. "Felidae (cats)", "Carnivora (carnivores)", ' +
+          '"Mammalia (mammals)".' +
+          (opts.hierarchy
+            ? " Suggest up to 4 parents forming a specific-to-general chain " +
+              'like a taxonomy (e.g. for "Cats": "Cat-like carnivores", ' +
+              '"Carnivores", "Mammals", "Animals"). Mix existing thoughts and ' +
+              "proposed new parents, ordered most specific first."
+            : " Choose up to 3 existing thoughts, ranked best first. If no " +
+              "existing thought is a good fit, return a single suggestion " +
+              "with parent_id null and a new_parent_title."),
       },
       { role: "user", content: user_parts.join("\n\n") },
     ];
@@ -139,7 +179,9 @@ export class AiService {
     const existingIds = new Set(thoughts.map((t) => t.id));
     const titles = new Map(thoughts.map((t) => [t.id, t.title]));
 
-    const items: Array<{ parent_id: string; reason: string }> = [];
+    const items: Suggestion[] = [];
+    const seenExisting = new Set<string>();
+    const seenNew = new Set<string>();
     for (const it of raw) {
       if (!it || typeof it !== "object") {
         continue;
@@ -147,33 +189,44 @@ export class AiService {
       const pid = (it as Record<string, unknown>).parent_id;
       const reason = asString((it as Record<string, unknown>).reason).trim();
       if (typeof pid === "string" && existingIds.has(pid)) {
-        items.push({ parent_id: pid, reason });
+        if (seenExisting.has(pid)) {
+          continue;
+        }
+        seenExisting.add(pid);
+        items.push({
+          parent_id: pid,
+          parent_title: titles.get(pid) ?? null,
+          reason,
+        });
+        continue;
+      }
+      if (pid === null || pid === undefined) {
+        const newTitle = asString(
+          (it as Record<string, unknown>).new_parent_title,
+        ).trim();
+        if (newTitle && !seenNew.has(newTitle.toLowerCase())) {
+          seenNew.add(newTitle.toLowerCase());
+          items.push({
+            parent_id: null,
+            parent_title: null,
+            new_parent_title: newTitle,
+            reason,
+          });
+        }
       }
     }
-    const seen = new Set<string>();
-    const deduped = items.filter((it) => {
-      if (seen.has(it.parent_id)) {
-        return false;
-      }
-      seen.add(it.parent_id);
-      return true;
-    });
 
-    const first = raw[0];
-    if (first && typeof first === "object" && (first as Record<string, unknown>).parent_id === null) {
-      return [
-        {
-          parent_id: null,
-          parent_title: null,
-          reason: asString((first as Record<string, unknown>).reason).trim(),
-        },
-      ];
+    if (opts.hierarchy) {
+      return items.slice(0, 4);
     }
-    return deduped.slice(0, 3).map((it) => ({
-      parent_id: it.parent_id,
-      parent_title: titles.get(it.parent_id) ?? null,
-      reason: it.reason,
-    }));
+    const existing = items.filter(
+      (s): s is Suggestion & { parent_id: string } => !!s.parent_id,
+    );
+    if (existing.length) {
+      return existing.slice(0, 3);
+    }
+    const firstNew = items.find((s) => !s.parent_id && s.new_parent_title);
+    return firstNew ? [firstNew] : [];
   }
 
   /** Ask the model for 3-5 cleaner titles. Port of _suggest_titles. */

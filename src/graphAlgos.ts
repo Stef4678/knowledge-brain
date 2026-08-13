@@ -101,3 +101,30 @@ export function findShortestPath(
   }
   return path.reverse();
 }
+
+/**
+ * Ordered node list chaining the shortest paths between consecutive `ids`.
+ * Every cited node is always included — a segment that is disconnected simply
+ * starts the next hop at the cited node, so it still gets highlighted on its
+ * own rather than being silently dropped. A single id yields `[id]`; empty
+ * input yields `[]`.
+ */
+export function buildContinuousPath(
+  ids: string[],
+  edges: ThoughtLink[],
+): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < ids.length; i++) {
+    if (out[out.length - 1] !== ids[i]) {
+      out.push(ids[i]);
+    }
+    if (i + 1 >= ids.length) {
+      continue;
+    }
+    const seg = findShortestPath(ids[i], ids[i + 1], edges);
+    if (seg) {
+      out.push(...seg.slice(1));
+    }
+  }
+  return out;
+}

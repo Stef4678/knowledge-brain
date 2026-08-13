@@ -762,6 +762,7 @@ export class KnowledgeBase {
       question_type?: string;
       tags?: string[];
       status?: string;
+      parents?: string[];
     },
   ): Promise<Thought> {
     const rec = this.records.get(id);
@@ -786,6 +787,14 @@ export class KnowledgeBase {
     }
     if (patch.status !== undefined) {
       rec.status = patch.status.trim();
+    }
+    if (patch.parents !== undefined) {
+      await this.setParentsInternal(rec, patch.parents);
+      // Prune parent labels for parents no longer in the list.
+      const keep = new Set(patch.parents);
+      rec.parentLabels = Object.fromEntries(
+        Object.entries(rec.parentLabels).filter(([k]) => keep.has(k)),
+      );
     }
     rec.updated_at = now();
     await this.writeRecord(rec);
