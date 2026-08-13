@@ -1135,9 +1135,9 @@ export class GraphView extends ItemView {
     }
     const times = new Set<string>();
     this.cy.nodes().forEach((n) => {
-      const t = n.data("created_at");
+      const t = String(n.data("created_at") ?? "");
       if (t) {
-        times.add(String(t));
+        times.add(t);
       }
     });
     this.timelineTimes = [...times].sort(
@@ -1158,8 +1158,8 @@ export class GraphView extends ItemView {
     const cursor = new Date(this.timelineTimes[this.timelineIndex]).getTime();
     const hidden = new Set<string>();
     this.cy.nodes().forEach((n) => {
-      const t = n.data("created_at");
-      const ms = t ? new Date(String(t)).getTime() : Number.NEGATIVE_INFINITY;
+      const t = String(n.data("created_at") ?? "");
+      const ms = t ? new Date(t).getTime() : Number.NEGATIVE_INFINITY;
       const h = Number.isFinite(ms) && ms > cursor;
       if (h) {
         hidden.add(n.id());
